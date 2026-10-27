@@ -21,8 +21,11 @@ jobs:
 
       - name: Syntax checks
         run: |
-          python -m py_compile speak.py mcp_server.py
+          python -m py_compile speak.py mcp_server.py hotkey.py tests/test_hotkey.py
           bash -n install.sh menu.sh uninstall.sh bootstrap.sh tests/smoke_test.sh examples/claude-code.sh
+
+      - name: Hotkey detector tests
+        run: python tests/test_hotkey.py
 
       - name: Text cleaner smoke test
         run: |

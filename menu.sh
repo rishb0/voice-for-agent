@@ -21,6 +21,42 @@ notify() {
   fi
 }
 
+ensure_x11() {
+  if [ -z "${DISPLAY:-}" ]; then
+    export DISPLAY=:0
+  fi
+  if [ -z "${XAUTHORITY:-}" ]; then
+    local dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+    local candidate
+    for candidate in "$dir"/.mutter-Xwaylandauth.* "$HOME"/.Xauthority; do
+      if [ -f "$candidate" ]; then
+        export XAUTHORITY="$candidate"
+        break
+      fi
+    done
+  fi
+}
+
+read_x11() {
+  local selection="$1"
+  local text=""
+  local dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  local candidate
+  ensure_x11
+  if text="$(xclip -selection "$selection" -o 2>/dev/null)"; then
+    printf '%s' "$text"
+    return 0
+  fi
+  for candidate in "$dir"/.mutter-Xwaylandauth.* "$HOME"/.Xauthority; do
+    [ -f "$candidate" ] || continue
+    if text="$(XAUTHORITY="$candidate" xclip -selection "$selection" -o 2>/dev/null)"; then
+      printf '%s' "$text"
+      return 0
+    fi
+  done
+  return 1
+}
+
 usage() {
   cat <<'EOF'
 voice-for-agent menu
@@ -133,6 +169,22 @@ print(value.strip() if isinstance(value, str) and value.strip() else "en_US-ljsp
     echo "INFO: speech: $("$PY" "$SPEAK" --is-speaking 2>/dev/null || echo unknown)"
   fi
 
+  if id -nG 2>/dev/null | tr ' ' '\n' | grep -qx input; then
+    echo "PASS: input group (double-tap Ctrl can read the keyboard)"
+  else
+    echo "WARN: not in the input group; double-tap Ctrl cannot read the keyboard"
+  fi
+
+  if command -v systemctl >/dev/null 2>&1; then
+    local hotkey_state
+    hotkey_state="$(systemctl --user is-active voice-for-agent-hotkey.service 2>/dev/null || true)"
+    if [ -n "$hotkey_state" ]; then
+      echo "INFO: hotkey: $hotkey_state"
+    else
+      echo "INFO: hotkey: not installed (bash menu.sh hotkey install)"
+    fi
+  fi
+
   echo
   if [ "$ok" -eq 0 ]; then
     echo "STATUS: ready"
@@ -177,7 +229,7 @@ speak_clipboard_cmd() {
     text="$(wl-paste --no-newline 2>/dev/null)" || true
   elif command -v xclip >/dev/null 2>&1; then
     source="xclip"
-    text="$(xclip -selection clipboard -o 2>/dev/null)" || true
+    text="$(read_x11 clipboard)" || text=""
   else
     log_event "speak-clipboard: no clipboard tool"
     echo "No clipboard tool found. Install wl-clipboard (Wayland) or xclip (X11)." >&2
@@ -203,7 +255,7 @@ speak_selection_cmd() {
     text="$(wl-paste --primary --no-newline 2>/dev/null)" || true
   elif command -v xclip >/dev/null 2>&1; then
     source="xclip"
-    text="$(xclip -selection primary -o 2>/dev/null)" || true
+    text="$(read_x11 primary)" || text=""
   else
     log_event "speak-selection: no selection tool"
     echo "No selection tool found. Install wl-clipboard (Wayland) or xclip (X11)." >&2
@@ -217,7 +269,7 @@ speak_selection_cmd() {
       text="$(wl-paste --no-newline 2>/dev/null)" || true
     else
       source="xclip clipboard"
-      text="$(xclip -selection clipboard -o 2>/dev/null)" || true
+      text="$(read_x11 clipboard)" || text=""
     fi
   fi
   if [ -z "${text//[[:space:]]/}" ]; then
@@ -281,19 +333,29 @@ hotkey_cmd() {
 [Unit]
 Description=voice-for-agent double-tap Ctrl hotkey
 After=graphical-session.target
+PartOf=graphical-session.target
 
 [Service]
-ExecStart=/usr/bin/python3 $ROOT/hotkey.py
+ExecStart=/usr/bin/python3 -u $ROOT/hotkey.py
 Restart=on-failure
-RestartSec=2
+RestartSec=5
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target
 EOF
       systemctl --user daemon-reload
-      if systemctl --user enable --now "$service"; then
-        echo "Installed: $unit"
-        echo "Double-tap Ctrl to speak the selection or stop speech."
+      systemctl --user disable "$service" >/dev/null 2>&1 || true
+      systemctl --user enable "$service" >/dev/null 2>&1
+      if systemctl --user restart "$service"; then
+        sleep 1
+        if systemctl --user is-active --quiet "$service"; then
+          echo "Installed: $unit"
+          echo "Double-tap Ctrl to speak the selection or stop speech."
+        else
+          echo "Installed, but $service is not running. Check:" >&2
+          echo "  bash menu.sh hotkey status" >&2
+          return 1
+        fi
       else
         echo "Could not start $service" >&2
         return 1

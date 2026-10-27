@@ -71,6 +71,7 @@ bash menu.sh toggle
 bash menu.sh hotkey install
 bash menu.sh stop
 bash menu.sh speaking
+bash menu.sh log
 bash menu.sh status
 bash menu.sh voices
 bash menu.sh test

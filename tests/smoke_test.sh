@@ -153,8 +153,20 @@ else
   fi
 fi
 
+# Test 6: double-tap Ctrl detector logic.
+if command -v python3 >/dev/null 2>&1; then
+  if python3 "$ROOT/tests/test_hotkey.py" >/dev/null 2>"$TMP/hotkey.err"; then
+    pass "Test 6 hotkey detector"
+  else
+    fail "Test 6 hotkey detector"
+    sed 's/^/  /' "$TMP/hotkey.err" 2>/dev/null || true
+  fi
+else
+  skip "Test 6 hotkey detector (python3 missing)"
+fi
+
 rm -f "$EDGE_FILE" "$PIPER_FILE" "$SAMPLE" "$TMP/edge.err" \
-  "$TMP/piper.err" "$TMP/play.err" "$TMP/mcp.err"
+  "$TMP/piper.err" "$TMP/play.err" "$TMP/mcp.err" "$TMP/hotkey.err"
 
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 [ "$FAIL_COUNT" -eq 0 ]

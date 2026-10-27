@@ -30,6 +30,7 @@ run, repair, and remove the tool without guessing commands.
 | "shortcut status" | `bash menu.sh hotkey status` |
 | "stop", "mute", "stop talking" | MCP tool `stop_speaking`, or `bash menu.sh stop` |
 | "is it speaking?" | `bash menu.sh speaking` |
+| "show speech log" | `bash menu.sh log` |
 | "status", "is it working?" | `bash menu.sh status` |
 | "list voices" | `bash menu.sh voices` |
 | "test it" | `bash menu.sh test` |
