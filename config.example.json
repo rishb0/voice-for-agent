@@ -1,0 +1,7 @@
+{
+  "engine": "edge",
+  "voice": "en-US-AriaNeural",
+  "piper_voice": "en_US-ljspeech-high",
+  "rate": "+0%",
+  "max_spoken_chars": 1200
+}

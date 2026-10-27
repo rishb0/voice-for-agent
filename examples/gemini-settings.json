@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "voice-for-agent": {
+      "command": "/ABSOLUTE/PATH/TO/voice-for-agent/.venv/bin/python",
+      "args": [
+        "/ABSOLUTE/PATH/TO/voice-for-agent/mcp_server.py"
+      ],
+      "cwd": "/ABSOLUTE/PATH/TO/voice-for-agent"
+    }
+  }
+}

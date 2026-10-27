@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "voice-for-agent": {
+        // EDIT: replace /ABSOLUTE/PATH/TO/voice-for-agent with this folder's absolute path.
+        "type": "local",
+        "command": [
+          "/ABSOLUTE/PATH/TO/voice-for-agent/.venv/bin/python",
+          "/ABSOLUTE/PATH/TO/voice-for-agent/mcp_server.py"
+        ],
+        "codemode": false
+      }
+    }
+  }
+}

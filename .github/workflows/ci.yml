@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Syntax checks
+        run: |
+          python -m py_compile speak.py mcp_server.py
+          bash -n install.sh menu.sh uninstall.sh bootstrap.sh tests/smoke_test.sh examples/claude-code.sh
+
+      - name: Text cleaner smoke test
+        run: |
+          output="$(python speak.py --clean-only '# Title
+
+Hello **world**.')"
+          test -n "$output"
+          printf '%s\n' "$output"

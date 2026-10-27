@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.yml text eol=lf
+
+*.onnx binary
+*.mp3 binary
+*.wav binary
