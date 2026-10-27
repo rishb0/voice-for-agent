@@ -19,7 +19,10 @@ Usage:
   bash menu.sh speak "text"       Speak text and wait
   bash menu.sh say "text"         Same as speak
   bash menu.sh async "text"       Speak in the background
+  bash menu.sh speak-clipboard    Speak clipboard text in the background
+  bash menu.sh speak-selection    Speak selected text in the background
   bash menu.sh stop               Stop speech and clear the queue
+  bash menu.sh speaking           Check if speech is currently playing
   bash menu.sh status             Check the installation and audio setup
   bash menu.sh voices             List edge and installed piper voices
   bash menu.sh test               Run the smoke tests
@@ -109,6 +112,10 @@ print(value.strip() if isinstance(value, str) and value.strip() else "en_US-ljsp
     ok=1
   fi
 
+  if [ -x "$PY" ]; then
+    echo "INFO: speech: $("$PY" "$SPEAK" --is-speaking 2>/dev/null || echo unknown)"
+  fi
+
   echo
   if [ "$ok" -eq 0 ]; then
     echo "STATUS: ready"
@@ -144,9 +151,50 @@ async_cmd() {
   "$PY" "$SPEAK" --async "$@"
 }
 
+speak_clipboard_cmd() {
+  require_venv || return 1
+  local text=""
+  if command -v wl-paste >/dev/null 2>&1; then
+    text="$(wl-paste --no-newline 2>/dev/null)" || true
+  elif command -v xclip >/dev/null 2>&1; then
+    text="$(xclip -selection clipboard -o 2>/dev/null)" || true
+  else
+    echo "No clipboard tool found. Install wl-clipboard (Wayland) or xclip (X11)." >&2
+    return 1
+  fi
+  if [ -z "${text//[[:space:]]/}" ]; then
+    echo "Clipboard is empty." >&2
+    return 0
+  fi
+  printf '%s' "$text" | "$PY" "$SPEAK" --async
+}
+
+speak_selection_cmd() {
+  require_venv || return 1
+  local text=""
+  if command -v wl-paste >/dev/null 2>&1; then
+    text="$(wl-paste --primary --no-newline 2>/dev/null)" || true
+  elif command -v xclip >/dev/null 2>&1; then
+    text="$(xclip -selection primary -o 2>/dev/null)" || true
+  else
+    echo "No selection tool found. Install wl-clipboard (Wayland) or xclip (X11)." >&2
+    return 1
+  fi
+  if [ -z "${text//[[:space:]]/}" ]; then
+    echo "No selected text." >&2
+    return 0
+  fi
+  printf '%s' "$text" | "$PY" "$SPEAK" --async
+}
+
 stop_cmd() {
   require_venv || return 1
   "$PY" "$SPEAK" stop
+}
+
+speaking_cmd() {
+  require_venv || return 1
+  "$PY" "$SPEAK" --is-speaking
 }
 
 voices_cmd() {
@@ -196,6 +244,8 @@ interactive_menu() {
     echo "7) Test"
     echo "8) Edit config"
     echo "9) Uninstall"
+    echo "10) Speak clipboard"
+    echo "11) Speak selected text"
     echo "0) Exit"
     printf "Choose: "
     IFS= read -r choice || exit 0
@@ -209,6 +259,8 @@ interactive_menu() {
       7) test_cmd ;;
       8) config_cmd edit ;;
       9) uninstall_cmd ;;
+      10) speak_clipboard_cmd ;;
+      11) speak_selection_cmd ;;
       0) exit 0 ;;
       *) echo "Invalid choice: $choice" ;;
     esac
@@ -220,7 +272,10 @@ case "${1:-menu}" in
   install) shift; install_cmd "$@" ;;
   speak|say) shift; speak_cmd "$@" ;;
   async) shift; async_cmd "$@" ;;
+  speak-clipboard|clipboard) shift; speak_clipboard_cmd ;;
+  speak-selection|selection) shift; speak_selection_cmd ;;
   stop) shift; stop_cmd "$@" ;;
+  speaking) shift; speaking_cmd ;;
   status) shift; status ;;
   voices) shift; voices_cmd ;;
   test) shift; test_cmd ;;

@@ -367,6 +367,23 @@ def _clear_active(job_pid: int | None = None) -> None:
         pass
 
 
+def is_speaking() -> bool:
+    """Return True when an active job or player process is still running."""
+    state = _read_active()
+    for key in ("job", "player"):
+        pid = state.get(key)
+        if not isinstance(pid, int):
+            continue
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            continue
+        except PermissionError:
+            return True
+        return True
+    return False
+
+
 def _kill_pid(pid: int | None, sig: int = signal.SIGTERM) -> None:
     if not pid:
         return
@@ -766,6 +783,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-chars", type=int, dest="max_chars")
     parser.add_argument("--list-voices", action="store_true")
     parser.add_argument(
+        "--is-speaking",
+        action="store_true",
+        help="print speaking or idle and exit",
+    )
+    parser.add_argument(
         "--clean-only",
         action="store_true",
         help="print cleaned text and exit",
@@ -788,6 +810,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.list_voices:
         return list_voices()
+
+    if args.is_speaking:
+        print("speaking" if is_speaking() else "idle")
+        return 0
 
     if args.text == ["stop"] and not args.file and not args.output:
         stop_speaking()

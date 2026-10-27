@@ -12,7 +12,8 @@ run, repair, and remove the tool without guessing commands.
 4. Do not delete files manually. Use `bash menu.sh uninstall`.
 5. Do not commit `.venv/`, `voices/*.onnx`, `.run/`, `.tmp/`, or `config.json`.
 6. Read `AGENTS.md` for how to speak. Read this file for how to operate.
-7. Keep the full answer on screen. Speak only a short summary.
+7. Keep the full answer on screen. Speak only when the user asks or after
+   "voice on".
 
 ## Intent map
 
@@ -22,7 +23,10 @@ run, repair, and remove the tool without guessing commands.
 | "remove", "uninstall", "delete it" | `bash menu.sh uninstall` (confirm first) |
 | "speak", "say it", "read this aloud" | MCP tool `speak`, or `bash menu.sh speak "text"` |
 | "speak in background" | MCP tool `speak`, or `bash menu.sh async "text"` |
+| "speak clipboard" | `bash menu.sh speak-clipboard` |
+| "speak selected text" | `bash menu.sh speak-selection` |
 | "stop", "mute", "stop talking" | MCP tool `stop_speaking`, or `bash menu.sh stop` |
+| "is it speaking?" | `bash menu.sh speaking` |
 | "status", "is it working?" | `bash menu.sh status` |
 | "list voices" | `bash menu.sh voices` |
 | "test it" | `bash menu.sh test` |

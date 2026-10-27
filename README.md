@@ -65,7 +65,10 @@ The same script works non-interactively, which is what agents should use:
 bash menu.sh install
 bash menu.sh speak "Build finished. All tests passed."
 bash menu.sh async "Build finished. All tests passed."
+bash menu.sh speak-clipboard
+bash menu.sh speak-selection
 bash menu.sh stop
+bash menu.sh speaking
 bash menu.sh status
 bash menu.sh voices
 bash menu.sh test
@@ -74,6 +77,44 @@ bash menu.sh uninstall
 ```
 
 Run `bash menu.sh help` for the full list.
+
+### Speak selected or copied text without chat
+
+You do not need to send a chat message. From a terminal:
+
+```bash
+bash menu.sh speak-clipboard
+bash menu.sh speak-selection
+```
+
+`speak-clipboard` reads the clipboard. `speak-selection` reads the current
+primary selection: the text you highlighted. Both speak in the background.
+
+On GNOME, bind them to keyboard shortcuts:
+
+1. Install a clipboard tool if missing:
+   - Wayland: `sudo apt install wl-clipboard`
+   - X11: `sudo apt install xclip`
+2. Open **Settings → Keyboard → Keyboard Shortcuts → Custom Shortcuts**.
+3. Add:
+   - Name: `Speak selection`
+     Command: `bash /path/to/voice-for-agent/menu.sh speak-selection`
+     Shortcut: `Super+Shift+S`
+   - Name: `Stop speech`
+     Command: `bash /path/to/voice-for-agent/menu.sh stop`
+     Shortcut: `Super+Shift+X`
+
+Select text anywhere, press the shortcut, and it speaks without touching the
+chat. Use the real install path in the command.
+
+Shell aliases for zsh:
+
+```bash
+alias say='bash /path/to/voice-for-agent/menu.sh speak'
+alias say-clip='bash /path/to/voice-for-agent/menu.sh speak-clipboard'
+alias say-sel='bash /path/to/voice-for-agent/menu.sh speak-selection'
+alias say-stop='bash /path/to/voice-for-agent/menu.sh stop'
+```
 
 ## Use as an agent skill
 
@@ -425,12 +466,16 @@ or repair commands.
 
 `AGENTS.md` tells the agent to:
 
-- call `speak` once after finishing a task or answer;
+- stay silent by default;
+- speak when the user says "speak", "read aloud", "say it", or "voice this";
+- speak after every answer only after the user says "voice on";
 - keep the spoken summary to 2–4 plain sentences;
 - avoid reading code, commands, paths, or long lists aloud;
-- call `stop_speaking` when the user says "stop talking" or "mute".
+- call `stop_speaking` when the user says "stop talking", "mute", or
+  "voice off".
 
-The full answer stays on screen. Only the short summary is spoken.
+The full answer stays on screen. Only the short summary is spoken. Check the
+current audio state with `bash menu.sh speaking`.
 
 ## How it works
 

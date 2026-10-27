@@ -66,6 +66,8 @@ CLI fallback:
 ```bash
 bash menu.sh speak "Build finished. All tests passed."
 bash menu.sh async "Build finished. All tests passed."
+bash menu.sh speak-clipboard
+bash menu.sh speak-selection
 bash menu.sh stop
 ```
 
@@ -73,6 +75,7 @@ Other commands:
 
 ```bash
 bash menu.sh status
+bash menu.sh speaking
 bash menu.sh voices
 bash menu.sh test
 bash menu.sh config
@@ -99,7 +102,8 @@ bash menu.sh uninstall --dry-run
 2. Do not install Python packages globally. `install.sh` uses a local `.venv/`.
 3. Do not delete files manually. Use `uninstall.sh`.
 4. Do not read code, commands, paths, or long lists aloud. Say what they are.
-5. Keep the full detailed answer on screen. Speak only a short summary.
+5. Keep the full detailed answer on screen. Speak only when the user asks or
+   after "voice on".
 6. Do not commit `.venv/`, `voices/*.onnx`, `.run/`, `.tmp/`, or `config.json`.
 7. If the user asks to stop talking or mute, call `stop_speaking` and do not
    speak again until told otherwise.
