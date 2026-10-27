@@ -59,7 +59,8 @@ class Options:
 
 
 def log(message: str) -> None:
-    print(f"voice-for-agent: {message}", file=sys.stderr, flush=True)
+    stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"{stamp} voice-for-agent: {message}", file=sys.stderr, flush=True)
 
 
 def ensure_dirs() -> None:
@@ -424,6 +425,7 @@ def _wait_dead(pid: int | None, timeout: float = 1.5) -> bool:
 def stop_speaking() -> None:
     """Stop the current job and invalidate every queued job."""
     ensure_dirs()
+    log("stop requested")
     _bump_generation()
     state = _read_active()
     old_job = state.get("job")
@@ -484,6 +486,7 @@ def _play_file(path: Path, generation: int, job_pid: int, job_id: str) -> bool:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+        log(f"play: {' '.join(command)}")
         _write_active(
             {
                 "job": job_pid,
@@ -512,6 +515,7 @@ def _play_file(path: Path, generation: int, job_pid: int, job_id: str) -> bool:
         )
         if returncode == 0:
             return True
+        log(f"player exited {returncode}: {' '.join(command)}")
     log("playback failed; install mpv or ffmpeg and check the audio device")
     return False
 
@@ -550,6 +554,10 @@ def run_job(raw_text: str, options: Options, generation: int) -> int:
             log("nothing to speak after cleaning")
             return 0
         chunks = chunk_text(cleaned)
+        log(
+            f"job {job_id}: {len(cleaned)} chars, {len(chunks)} chunk(s), "
+            f"engine={options.engine}"
+        )
         _write_active(
             {
                 "job": job_pid,
@@ -581,6 +589,7 @@ def run_job(raw_text: str, options: Options, generation: int) -> int:
                 except OSError:
                     pass
                 pending_output = None
+            log(f"job {job_id}: done")
             return 0
         finally:
             if pending_output is not None:

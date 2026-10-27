@@ -108,6 +108,8 @@ bash menu.sh speak "Build finished. All tests passed."
 bash menu.sh async "Build finished. All tests passed."
 bash menu.sh speak-clipboard
 bash menu.sh speak-selection
+bash menu.sh toggle
+bash menu.sh hotkey install
 bash menu.sh stop
 ```
 

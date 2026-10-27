@@ -99,6 +99,14 @@ for target in "${TARGETS[@]}"; do
 done
 find "$ROOT" -maxdepth 2 -name '*.pyc' -delete 2>/dev/null || true
 
+HOTKEY_UNIT="$HOME/.config/systemd/user/voice-for-agent-hotkey.service"
+if [ -f "$HOTKEY_UNIT" ]; then
+  systemctl --user disable --now voice-for-agent-hotkey.service >/dev/null 2>&1 || true
+  rm -f "$HOTKEY_UNIT"
+  systemctl --user daemon-reload >/dev/null 2>&1 || true
+  echo "Removed double-tap Ctrl service."
+fi
+
 echo
 echo "Removed generated files. Source and documentation remain."
 echo "To reinstall: bash install.sh"

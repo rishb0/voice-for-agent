@@ -25,6 +25,9 @@ run, repair, and remove the tool without guessing commands.
 | "speak in background" | MCP tool `speak`, or `bash menu.sh async "text"` |
 | "speak clipboard" | `bash menu.sh speak-clipboard` |
 | "speak selected text" | `bash menu.sh speak-selection` |
+| "toggle speech" | `bash menu.sh toggle` |
+| "make a shortcut", "double tap ctrl" | `bash menu.sh hotkey install` |
+| "shortcut status" | `bash menu.sh hotkey status` |
 | "stop", "mute", "stop talking" | MCP tool `stop_speaking`, or `bash menu.sh stop` |
 | "is it speaking?" | `bash menu.sh speaking` |
 | "status", "is it working?" | `bash menu.sh status` |

@@ -67,6 +67,8 @@ bash menu.sh speak "Build finished. All tests passed."
 bash menu.sh async "Build finished. All tests passed."
 bash menu.sh speak-clipboard
 bash menu.sh speak-selection
+bash menu.sh toggle
+bash menu.sh hotkey install
 bash menu.sh stop
 bash menu.sh speaking
 bash menu.sh status
@@ -90,7 +92,37 @@ bash menu.sh speak-selection
 `speak-clipboard` reads the clipboard. `speak-selection` reads the current
 primary selection: the text you highlighted. Both speak in the background.
 
-On GNOME, bind them to keyboard shortcuts:
+### Double-tap Ctrl (recommended on GNOME Wayland)
+
+GNOME custom shortcuts can be unreliable on Wayland, so this uses a small
+login service that reads Ctrl presses directly:
+
+```bash
+bash menu.sh hotkey install
+```
+
+Then:
+
+- tap `Ctrl` twice quickly → speak the selection, or the clipboard if nothing
+  is selected;
+- tap `Ctrl` twice again while speaking → stop.
+
+The service starts at login and keeps running in the background. It never
+stores keystrokes; it only measures Ctrl press and release timing.
+
+```bash
+bash menu.sh hotkey status
+bash menu.sh hotkey remove
+bash menu.sh hotkey run      # run in the foreground to debug
+```
+
+Reading `/dev/input` requires the user to be in the `input` group:
+
+```bash
+sudo usermod -aG input "$USER"   # log out and back in afterwards
+```
+
+### GNOME custom shortcuts (alternative)
 
 1. Install a clipboard tool if missing:
    - Wayland: `sudo apt install wl-clipboard`
@@ -107,13 +139,14 @@ On GNOME, bind them to keyboard shortcuts:
 Select text anywhere, press the shortcut, and it speaks without touching the
 chat. Use the real install path in the command.
 
-Shell aliases for zsh:
+### Shell aliases for zsh
 
 ```bash
 alias say='bash /path/to/voice-for-agent/menu.sh speak'
 alias say-clip='bash /path/to/voice-for-agent/menu.sh speak-clipboard'
 alias say-sel='bash /path/to/voice-for-agent/menu.sh speak-selection'
 alias say-stop='bash /path/to/voice-for-agent/menu.sh stop'
+alias say-toggle='bash /path/to/voice-for-agent/menu.sh toggle'
 ```
 
 ## Use as an agent skill

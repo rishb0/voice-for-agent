@@ -8,6 +8,18 @@ cd "$ROOT" || exit 1
 PY="$ROOT/.venv/bin/python"
 SPEAK="$ROOT/speak.py"
 DEFAULT_VOICE="en_US-ljspeech-high"
+LOG_FILE="$ROOT/.run/speak.log"
+
+log_event() {
+  mkdir -p "$ROOT/.run" 2>/dev/null || true
+  printf '%s menu: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$LOG_FILE" 2>/dev/null || true
+}
+
+notify() {
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send -a voice-for-agent "voice-for-agent" "$1" >/dev/null 2>&1 || true
+  fi
+}
 
 usage() {
   cat <<'EOF'
@@ -21,8 +33,13 @@ Usage:
   bash menu.sh async "text"       Speak in the background
   bash menu.sh speak-clipboard    Speak clipboard text in the background
   bash menu.sh speak-selection    Speak selected text in the background
+  bash menu.sh toggle             Stop if speaking, otherwise speak selection
+  bash menu.sh hotkey install     Double-tap Ctrl to speak or stop (login service)
+  bash menu.sh hotkey status      Show the double-tap Ctrl service
+  bash menu.sh hotkey remove      Remove the double-tap Ctrl service
   bash menu.sh stop               Stop speech and clear the queue
   bash menu.sh speaking           Check if speech is currently playing
+  bash menu.sh log                Show recent speech activity and errors
   bash menu.sh status             Check the installation and audio setup
   bash menu.sh voices             List edge and installed piper voices
   bash menu.sh test               Run the smoke tests
@@ -153,48 +170,149 @@ async_cmd() {
 
 speak_clipboard_cmd() {
   require_venv || return 1
-  local text=""
+  local text="" source=""
+  log_event "speak-clipboard start"
   if command -v wl-paste >/dev/null 2>&1; then
+    source="wl-paste"
     text="$(wl-paste --no-newline 2>/dev/null)" || true
   elif command -v xclip >/dev/null 2>&1; then
+    source="xclip"
     text="$(xclip -selection clipboard -o 2>/dev/null)" || true
   else
+    log_event "speak-clipboard: no clipboard tool"
     echo "No clipboard tool found. Install wl-clipboard (Wayland) or xclip (X11)." >&2
+    notify "No clipboard tool. Install wl-clipboard or xclip."
     return 1
   fi
   if [ -z "${text//[[:space:]]/}" ]; then
+    log_event "speak-clipboard: empty clipboard via $source"
     echo "Clipboard is empty." >&2
+    notify "Clipboard is empty. Copy text, then press the shortcut again."
     return 0
   fi
+  log_event "speak-clipboard: ${#text} chars via $source"
   printf '%s' "$text" | "$PY" "$SPEAK" --async
 }
 
 speak_selection_cmd() {
   require_venv || return 1
-  local text=""
+  local text="" source=""
+  log_event "speak-selection start"
   if command -v wl-paste >/dev/null 2>&1; then
+    source="wl-paste"
     text="$(wl-paste --primary --no-newline 2>/dev/null)" || true
   elif command -v xclip >/dev/null 2>&1; then
+    source="xclip"
     text="$(xclip -selection primary -o 2>/dev/null)" || true
   else
+    log_event "speak-selection: no selection tool"
     echo "No selection tool found. Install wl-clipboard (Wayland) or xclip (X11)." >&2
+    notify "No selection tool. Install wl-clipboard or xclip."
     return 1
   fi
   if [ -z "${text//[[:space:]]/}" ]; then
+    log_event "speak-selection: empty primary via $source, trying clipboard"
+    if command -v wl-paste >/dev/null 2>&1; then
+      source="wl-paste clipboard"
+      text="$(wl-paste --no-newline 2>/dev/null)" || true
+    else
+      source="xclip clipboard"
+      text="$(xclip -selection clipboard -o 2>/dev/null)" || true
+    fi
+  fi
+  if [ -z "${text//[[:space:]]/}" ]; then
+    log_event "speak-selection: nothing selected or copied via $source"
     echo "No selected text." >&2
+    notify "Nothing selected or copied. Highlight or copy text, then try again."
     return 0
   fi
+  log_event "speak-selection: ${#text} chars via $source"
+  notify "Speaking ${#text} characters."
   printf '%s' "$text" | "$PY" "$SPEAK" --async
 }
 
 stop_cmd() {
   require_venv || return 1
+  log_event "stop"
   "$PY" "$SPEAK" stop
 }
 
 speaking_cmd() {
   require_venv || return 1
   "$PY" "$SPEAK" --is-speaking
+}
+
+log_cmd() {
+  if [ -f "$LOG_FILE" ]; then
+    tail -n "${1:-40}" "$LOG_FILE"
+  else
+    echo "No log yet: $LOG_FILE"
+  fi
+}
+
+toggle_cmd() {
+  require_venv || return 1
+  local state
+  state="$("$PY" "$SPEAK" --is-speaking 2>/dev/null || echo idle)"
+  if [ "$state" = "speaking" ]; then
+    log_event "toggle: speaking -> stop"
+    "$PY" "$SPEAK" stop
+  else
+    log_event "toggle: idle -> speak selection"
+    speak_selection_cmd
+  fi
+}
+
+hotkey_cmd() {
+  local action="${1:-status}"
+  local unit="$HOME/.config/systemd/user/voice-for-agent-hotkey.service"
+  local service="voice-for-agent-hotkey.service"
+  case "$action" in
+    run)
+      exec python3 "$ROOT/hotkey.py"
+      ;;
+    install)
+      if ! command -v python3 >/dev/null 2>&1; then
+        echo "python3 is required." >&2
+        return 1
+      fi
+      mkdir -p "$(dirname "$unit")"
+      cat >"$unit" <<EOF
+[Unit]
+Description=voice-for-agent double-tap Ctrl hotkey
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 $ROOT/hotkey.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+EOF
+      systemctl --user daemon-reload
+      if systemctl --user enable --now "$service"; then
+        echo "Installed: $unit"
+        echo "Double-tap Ctrl to speak the selection or stop speech."
+      else
+        echo "Could not start $service" >&2
+        return 1
+      fi
+      ;;
+    remove)
+      systemctl --user disable --now "$service" >/dev/null 2>&1 || true
+      rm -f "$unit"
+      systemctl --user daemon-reload
+      echo "Removed double-tap Ctrl hotkey."
+      ;;
+    status)
+      systemctl --user status "$service" --no-pager 2>&1 | sed -n '1,12p'
+      ;;
+    *)
+      echo "Usage: bash menu.sh hotkey [install|status|remove|run]" >&2
+      return 2
+      ;;
+  esac
 }
 
 voices_cmd() {
@@ -274,8 +392,11 @@ case "${1:-menu}" in
   async) shift; async_cmd "$@" ;;
   speak-clipboard|clipboard) shift; speak_clipboard_cmd ;;
   speak-selection|selection) shift; speak_selection_cmd ;;
+  toggle) shift; toggle_cmd ;;
+  hotkey) shift; hotkey_cmd "$@" ;;
   stop) shift; stop_cmd "$@" ;;
   speaking) shift; speaking_cmd ;;
+  log) shift; log_cmd "$@" ;;
   status) shift; status ;;
   voices) shift; voices_cmd ;;
   test) shift; test_cmd ;;
