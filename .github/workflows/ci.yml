@@ -26,8 +26,6 @@ jobs:
 
       - name: Text cleaner smoke test
         run: |
-          output="$(python speak.py --clean-only '# Title
-
-Hello **world**.')"
+          output="$(python speak.py --clean-only '# Title Hello **world**.')"
           test -n "$output"
           printf '%s\n' "$output"
