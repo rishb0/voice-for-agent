@@ -1,6 +1,6 @@
 ---
 name: Voice for Agent
-description: Install and use output-only text-to-speech for AI agents. Use when the user wants an agent to speak summaries aloud, install voice-for-agent from a GitHub URL, stop speech, check TTS status, or remove the local speech tool.
+description: Install and use output-only text-to-speech for AI agents. Use when the user wants an agent to speak summaries aloud, install voice-for-agent from a GitHub URL, speak selected text with a double-tap Ctrl hotkey, control the hotkey systemd service, stop speech, check TTS status, or remove the local speech tool.
 license: MIT
 compatibility: Linux, WSL
 metadata:
@@ -109,7 +109,6 @@ bash menu.sh async "Build finished. All tests passed."
 bash menu.sh speak-clipboard
 bash menu.sh speak-selection
 bash menu.sh toggle
-bash menu.sh hotkey install
 bash menu.sh stop
 ```
 
@@ -118,10 +117,42 @@ Other commands:
 ```bash
 bash menu.sh status
 bash menu.sh speaking
+bash menu.sh log
 bash menu.sh voices
 bash menu.sh test
 bash menu.sh config
 ```
+
+## Double-tap Ctrl service
+
+Install once:
+
+```bash
+bash menu.sh service install
+```
+
+Control it with `systemctl --user`:
+
+```bash
+systemctl --user status voice-for-agent-hotkey.service
+systemctl --user start voice-for-agent-hotkey.service
+systemctl --user stop voice-for-agent-hotkey.service
+systemctl --user restart voice-for-agent-hotkey.service
+systemctl --user enable voice-for-agent-hotkey.service
+systemctl --user disable voice-for-agent-hotkey.service
+journalctl --user -u voice-for-agent-hotkey.service -n 50 --no-pager
+```
+
+Remove it:
+
+```bash
+bash menu.sh service remove
+```
+
+Tap `Ctrl` twice to speak the selection or the clipboard, and twice again to
+stop. The service needs `input` group membership. If the log says
+`no readable /dev/input devices`, ask the user to run
+`sudo usermod -aG input "$USER"` and log out and back in.
 
 Read `AGENT_GUIDE.md` in the installed folder for the full operations guide.
 Read `AGENTS.md` for the speaking behaviour rules.
@@ -173,9 +204,10 @@ documentation, examples, tests, or `LICENSE`.
 ## Defaults
 
 - Engine: `edge`
-- Edge voice: `en-US-AriaNeural`
+- Edge voice: `en-IN-PrabhatNeural` (Indian English male, reads Hinglish)
+- Hindi voice: `hi-IN-MadhurNeural`, used automatically for Devanagari text
 - Offline voice: `en_US-ljspeech-high`
-- Rate: `+0%`
+- Rate: `+0%`, pitch: `+0Hz`
 - Spoken limit: `1200` characters
 - License: MIT
 

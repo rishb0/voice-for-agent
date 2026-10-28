@@ -29,6 +29,14 @@ jobs:
           python tests/test_hotkey.py
           python tests/test_voice.py
 
+      - name: Unit template renders
+        run: |
+          sed -e 's|@ROOT_URI@|/tmp/repo|g' -e 's|@ROOT@|/tmp/repo|g' \
+            -e 's|@PYTHON@|/usr/bin/python3|g' \
+            systemd/voice-for-agent-hotkey.service.in >/tmp/unit.service
+          ! grep -q '@' /tmp/unit.service
+          grep -q '^ExecStart=' /tmp/unit.service
+
       - name: Text cleaner smoke test
         run: |
           output="$(python speak.py --clean-only '# Title Hello **world**.')"

@@ -13,6 +13,27 @@ warn() { echo "WARN: $*"; }
 APT_CMD="sudo apt update && sudo apt install -y python3 python3-venv mpv ffmpeg"
 DEFAULT_PIPER_VOICE="en_US-ljspeech-high"
 PIPER_VOICE=""
+WITH_SERVICE=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --with-service) WITH_SERVICE=1 ;;
+    -h | --help)
+      cat <<'EOF'
+Usage: bash install.sh [--with-service]
+
+  --with-service   Also install and enable the double-tap Ctrl user service
+                   (systemctl --user voice-for-agent-hotkey.service).
+EOF
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $arg" >&2
+      echo "Usage: bash install.sh [--with-service]" >&2
+      exit 2
+      ;;
+  esac
+done
 
 echo "voice-for-agent install"
 echo "folder: $ROOT"
@@ -140,6 +161,14 @@ if bash tests/smoke_test.sh; then
   pass "smoke test"
 else
   fail "smoke test"
+fi
+
+if [ "$WITH_SERVICE" -eq 1 ]; then
+  if bash menu.sh service install; then
+    pass "double-tap Ctrl service installed and enabled"
+  else
+    warn "service install failed; run: bash menu.sh service install"
+  fi
 fi
 
 echo "PASS: install complete"

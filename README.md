@@ -4,11 +4,47 @@ Output-only text-to-speech for AI agents. The agent writes text; this tool
 cleans it, speaks it, and gets out of the way. There is no microphone, no
 speech-to-text, and no realtime duplex chat.
 
-- Primary engine: `edge-tts` (online, natural voices).
+- Primary engine: `edge-tts` (online, natural neural voices).
 - Offline fallback: `piper` with a local voice model.
 - Playback: `mpv`, then `ffplay`, then `paplay`/`aplay`.
-- Interfaces: a small CLI and an MCP stdio server.
+- Interfaces: a CLI, an MCP stdio server, and an optional global hotkey service.
 - No API keys, GPU, paid service, or cloud account.
+
+## Contents
+
+1. [What you get](#what-you-get)
+2. [Requirements](#requirements)
+3. [Install](#install)
+4. [First check](#first-check)
+5. [Speak from the command line](#speak-from-the-command-line)
+6. [Double-tap Ctrl service](#double-tap-ctrl-service)
+7. [Using the service with systemctl](#using-the-service-with-systemctl)
+8. [Voices](#voices)
+9. [Configuration](#configuration)
+10. [CLI reference](#cli-reference)
+11. [MCP server](#mcp-server)
+12. [Agent rules and skill](#agent-rules-and-skill)
+13. [Update](#update)
+14. [Uninstall](#uninstall)
+15. [Files and layout](#files-and-layout)
+16. [Tests](#tests)
+17. [Troubleshooting](#troubleshooting)
+18. [Platform support](#platform-support)
+19. [Privacy and security](#privacy-and-security)
+20. [Limits](#limits)
+21. [Voice models and licensing](#voice-models-and-licensing)
+22. [Publish to GitHub](#publish-to-github)
+
+## What you get
+
+| Piece | What it does | Needs the agent open? |
+|---|---|---|
+| `speak.py` | Speak text from the CLI, a file, or stdin | no |
+| MCP server | `speak` and `stop_speaking` tools inside your agent | yes |
+| Double-tap Ctrl service | Speak the selection or stop, in any app | no |
+
+The hotkey service and the MCP server are independent. Closing the agent does
+not break the hotkey. Stopping the hotkey service does not break chat speech.
 
 ## Requirements
 
@@ -20,176 +56,26 @@ speech-to-text, and no realtime duplex chat.
 - Network access for the first install and for `edge-tts`. The piper fallback
   works offline after the voice model is installed.
 
+Optional, only for the double-tap Ctrl service:
+
+- `systemd` user services, available on any modern desktop Linux.
+- Membership in the `input` group, so the service can read `/dev/input`.
+- `xclip` (X11) or `wl-clipboard` (Wayland) to read the selected or copied text.
+
 `install.sh` never runs `sudo`. If a system package is missing, it prints the
-`apt` command to run yourself.
+`apt` command for you to run yourself.
 
-## Quick start
+## Install
+
+### Option 1: clone and install
 
 ```bash
-cd /path/to/voice-for-agent
+git clone https://github.com/rishb0/voice-for-agent.git
+cd voice-for-agent
 bash install.sh
-
-./.venv/bin/python speak.py "Build finished. All tests passed."
 ```
 
-`bash install.sh` creates `.venv`, installs the pinned Python packages,
-downloads the default piper voice, and runs the smoke test. It is safe to run
-again.
-
-Stop current speech and clear the queue:
-
-```bash
-./.venv/bin/python speak.py stop
-```
-
-Speak in the background and return immediately:
-
-```bash
-./.venv/bin/python speak.py --async "Build finished. All tests passed."
-```
-
-## Menu and single entry point
-
-If you do not want to remember individual commands, use `menu.sh`:
-
-```bash
-bash menu.sh
-```
-
-That opens a numbered menu for install, speak, stop, status, voices, tests,
-config, and uninstall.
-
-The same script works non-interactively, which is what agents should use:
-
-```bash
-bash menu.sh install
-bash menu.sh speak "Build finished. All tests passed."
-bash menu.sh async "Build finished. All tests passed."
-bash menu.sh speak-clipboard
-bash menu.sh speak-selection
-bash menu.sh toggle
-bash menu.sh hotkey install
-bash menu.sh service start
-bash menu.sh service stop
-bash menu.sh stop
-bash menu.sh speaking
-bash menu.sh log
-bash menu.sh status
-bash menu.sh voices
-bash menu.sh test
-bash menu.sh config
-bash menu.sh uninstall
-```
-
-Run `bash menu.sh help` for the full list.
-
-### Speak selected or copied text without chat
-
-You do not need to send a chat message. From a terminal:
-
-```bash
-bash menu.sh speak-clipboard
-bash menu.sh speak-selection
-```
-
-`speak-clipboard` reads the clipboard. `speak-selection` reads the current
-primary selection: the text you highlighted. Both speak in the background.
-
-### Double-tap Ctrl (recommended on GNOME Wayland)
-
-GNOME custom shortcuts can be unreliable on Wayland, so this uses a small
-login service that reads Ctrl presses directly:
-
-```bash
-bash menu.sh hotkey install
-```
-
-Then:
-
-- tap `Ctrl` twice quickly → speak the selection, or the clipboard if nothing
-  is selected;
-- tap `Ctrl` twice again while speaking → stop.
-
-The service starts at login and keeps running in the background. It never
-stores keystrokes; it only measures Ctrl press and release timing.
-
-```bash
-bash menu.sh hotkey status
-bash menu.sh hotkey remove
-bash menu.sh hotkey run      # run in the foreground to debug
-```
-
-Reading `/dev/input` requires the user to be in the `input` group:
-
-```bash
-sudo usermod -aG input "$USER"   # log out and back in afterwards
-```
-
-### Start or stop the global hotkey service
-
-The hotkey service is independent of OpenCode and of the MCP server. It stays
-running for your whole desktop session, so it works in any app.
-
-```bash
-bash menu.sh service start
-bash menu.sh service stop
-bash menu.sh service restart
-bash menu.sh service status
-bash menu.sh service disable   # do not start at login
-bash menu.sh service enable    # start at login again
-```
-
-`stop` stops it until you start it again. `disable` also keeps it off after the
-next login. Stopping the hotkey service does not affect chat `speak` calls from
-an agent.
-
-### GNOME custom shortcuts (alternative)
-
-1. Install a clipboard tool if missing:
-   - Wayland: `sudo apt install wl-clipboard`
-   - X11: `sudo apt install xclip`
-2. Open **Settings → Keyboard → Keyboard Shortcuts → Custom Shortcuts**.
-3. Add:
-   - Name: `Speak selection`
-     Command: `bash /path/to/voice-for-agent/menu.sh speak-selection`
-     Shortcut: `Super+Shift+S`
-   - Name: `Stop speech`
-     Command: `bash /path/to/voice-for-agent/menu.sh stop`
-     Shortcut: `Super+Shift+X`
-
-Select text anywhere, press the shortcut, and it speaks without touching the
-chat. Use the real install path in the command.
-
-### Shell aliases for zsh
-
-```bash
-alias say='bash /path/to/voice-for-agent/menu.sh speak'
-alias say-clip='bash /path/to/voice-for-agent/menu.sh speak-clipboard'
-alias say-sel='bash /path/to/voice-for-agent/menu.sh speak-selection'
-alias say-stop='bash /path/to/voice-for-agent/menu.sh stop'
-alias say-toggle='bash /path/to/voice-for-agent/menu.sh toggle'
-```
-
-## Use as an agent skill
-
-This repository is also a portable agent skill. Give an agent the repository
-URL and tell it to read `SKILL.md`:
-
-```text
-https://github.com/rishb0/voice-for-agent
-```
-
-A folder URL such as `/tree/main` should be converted to the repository URL
-ending in `.git` for cloning. If you fork this repository, replace `rishb0` with
-your own GitHub account or organization.
-
-The skill tells the agent to install into:
-
-```text
-${XDG_DATA_HOME:-$HOME/.local/share}/voice-for-agent
-```
-
-Manual agent install:
+### Option 2: install into a stable data folder
 
 ```bash
 TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/voice-for-agent"
@@ -202,24 +88,9 @@ fi
 
 cd "$TARGET"
 bash install.sh
-bash menu.sh status
 ```
 
-One-command bootstrap:
-
-```bash
-bash bootstrap.sh --repo https://github.com/rishb0/voice-for-agent.git
-```
-
-Register the MCP server globally in OpenCode:
-
-```bash
-TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/voice-for-agent"
-opencode mcp add voice-for-agent --global -- \
-  "$TARGET/.venv/bin/python" "$TARGET/mcp_server.py"
-```
-
-Or let the bootstrap do it:
+### Option 3: one-command bootstrap
 
 ```bash
 bash bootstrap.sh \
@@ -227,43 +98,16 @@ bash bootstrap.sh \
   --register-opencode
 ```
 
-From a raw URL:
+### Install with the hotkey service in one step
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/rishb0/voice-for-agent/main/bootstrap.sh \
-  | bash -s -- --repo https://github.com/rishb0/voice-for-agent.git --register-opencode
+bash install.sh --with-service
 ```
 
-OpenCode automatically discovers the project skill at
-`.opencode/skills/voice-for-agent/SKILL.md` when working inside this repository.
-For other agents, point them at `SKILL.md` or `AGENT_GUIDE.md`.
+This runs the normal install and then installs and enables the double-tap Ctrl
+user service. Without the flag, the service is not touched.
 
-## How to read this repository
-
-| Path | What it is |
-|---|---|
-| `menu.sh` | Single entry point: interactive menu and `install`/`speak`/`stop`/`status`/`test`/`uninstall` commands. |
-| `bootstrap.sh` | Clone or update from a Git URL, install, and optionally register OpenCode globally. |
-| `SKILL.md` | Portable agent-skill entry point for any agent that receives this repository URL. |
-| `.opencode/skills/voice-for-agent/SKILL.md` | OpenCode-discoverable skill definition. |
-| `speak.py` | CLI, text cleaner, chunker, synthesis, playback, queue, and stop logic. |
-| `mcp_server.py` | Thin FastMCP stdio wrapper exposing `speak` and `stop_speaking`. |
-| `install.sh` | Idempotent setup and self-test. Does not use `sudo`. |
-| `uninstall.sh` | Removes generated files, voices, and local config without touching source. |
-| `requirements.txt` | Pinned Python dependencies. |
-| `config.example.json` | Example local configuration. |
-| `AGENTS.md` | Pasteable rules that tell an agent when and how to speak. |
-| `AGENT_GUIDE.md` | Operations guide for any agent: install, remove, status, test, config, and safety. |
-| `examples/` | Registration snippets for OpenCode, Claude Code, and Gemini CLI. |
-| `tests/smoke_test.sh` | End-to-end tests for edge-tts, piper, text cleaning, MCP tools, and playback. |
-| `.github/workflows/ci.yml` | Public-repo CI: syntax checks and a text-cleaner smoke test. |
-| `LICENSE` | MIT License for this project. |
-| `THIRD_PARTY_NOTICES.md` | Dependency and voice-model license notes. |
-| `.venv/`, `voices/*.onnx`, `.run/`, `.tmp/` | Generated locally and ignored by git. |
-
-## What `install.sh` does and where files go
-
-`bash install.sh` performs these steps:
+### What `install.sh` does
 
 1. Finds a supported Python 3.10–3.13 and checks `python3-venv`.
 2. Checks for an audio player: `mpv`, `ffplay`, `paplay`, or `aplay`.
@@ -272,48 +116,284 @@ For other agents, point them at `SKILL.md` or `AGENT_GUIDE.md`.
 5. Reads `piper_voice` from `config.json` if present; otherwise uses
    `en_US-ljspeech-high`.
 6. Downloads the piper `.onnx` model and `.onnx.json` config into `voices/`.
-7. Runs the five smoke tests.
-8. Exits non-zero if a required step fails.
+7. Runs the smoke tests.
+8. With `--with-service`, installs and enables
+   `voice-for-agent-hotkey.service`.
+9. Exits non-zero if a required step fails.
 
-It does **not** run `sudo`, install system packages, change the system Python,
-create a service, add a startup entry, or install anything globally. If a system
-package is missing, it prints the `apt` command for you to run.
+It is idempotent: running it again repairs the install. It does not run `sudo`,
+install system packages, or change the system Python.
 
-Everything persistent stays inside the install folder. The default bootstrap
-install folder is `${XDG_DATA_HOME:-$HOME/.local/share}/voice-for-agent`.
-
-| Path | Approximate size | Purpose |
-|---|---:|---|
-| `.venv/` | 284 MB | Local Python environment and packages. |
-| `voices/` | 109 MB for the default voice | Downloaded piper model and config. |
-| `.run/` | small | Locks, generation counter, async log. |
-| `.tmp/` | small | Temporary audio, deleted after playback. |
-| `config.json` | small | Optional local configuration. |
-| `__pycache__/` | small | Python bytecode, safe to delete. |
-
-Pip caching is disabled with `--no-cache-dir`, so the install does not keep a
-persistent package cache in `~/.cache/pip`. Pip and the voice download may still
-use temporary files under `/tmp` while running. The project does not write to
-`/usr`, `/opt`, a system service directory, or other home-directory locations
-outside the install folder.
-
-To see the current sizes:
+If `python3-venv` or an audio player is missing, install it and rerun:
 
 ```bash
-du -sh .venv voices .run .tmp 2>/dev/null
+sudo apt update && sudo apt install -y python3 python3-venv mpv ffmpeg
 ```
 
-## Platform support
+## First check
 
-- **Linux:** supported.
-- **WSL:** supported; audio depends on the WSL audio setup.
-- **macOS:** not supported by the current installer or player list. The Python
-  code uses Unix features, but `install.sh` is Debian/apt-specific and there is
-  no `afplay` support yet.
-- **Native Windows:** not supported. `speak.py` uses `fcntl` and Unix process
-  groups for queueing and stop. Use WSL instead.
+```bash
+bash menu.sh status
+```
 
-## CLI usage
+This checks the virtualenv, packages, piper voice model, audio player, config
+file, MCP import, `input` group membership, and the hotkey service state.
+
+Speak one sentence:
+
+```bash
+bash menu.sh speak "Build finished. All tests passed."
+```
+
+Stop it:
+
+```bash
+bash menu.sh stop
+```
+
+## Speak from the command line
+
+```bash
+bash menu.sh speak "Deployment finished. Two tests failed."   # wait until done
+bash menu.sh async "Deployment finished."                     # return immediately
+bash menu.sh stop                                             # stop and clear queue
+bash menu.sh speaking                                         # is it talking?
+bash menu.sh log                                              # recent activity
+```
+
+Directly, without the wrapper:
+
+```bash
+./.venv/bin/python speak.py "Deployment finished."
+./.venv/bin/python speak.py --async "Deployment finished."
+./.venv/bin/python speak.py stop
+```
+
+Read from a file or stdin:
+
+```bash
+./.venv/bin/python speak.py --file notes.md
+./.venv/bin/python speak.py --file - < notes.md
+cat notes.md | ./.venv/bin/python speak.py
+```
+
+Speak text you selected or copied, without sending a chat message:
+
+```bash
+bash menu.sh speak-selection     # highlight text, then run this
+bash menu.sh speak-clipboard     # copy text, then run this
+bash menu.sh toggle              # stop if speaking, else speak selection
+```
+
+## Double-tap Ctrl service
+
+This is a small background service that reads Ctrl presses from `/dev/input`.
+It does not use GNOME custom shortcuts, which are unreliable on Wayland.
+
+Install it once:
+
+```bash
+bash menu.sh service install
+```
+
+Use it:
+
+- tap `Ctrl` twice quickly → speak the selection, or the clipboard if nothing is
+  selected;
+- tap `Ctrl` twice again while speaking → stop.
+
+The service starts at login and runs for your whole desktop session. It never
+stores keystrokes. It only measures Ctrl press and release timing, and it ignores
+any tap where another key was pressed while Ctrl was held, so `Ctrl+C`,
+`Ctrl+V`, and `Ctrl+Z` never trigger it.
+
+Reading `/dev/input` requires the `input` group:
+
+```bash
+sudo usermod -aG input "$USER"
+```
+
+Log out and back in afterwards, then check:
+
+```bash
+id -nG | tr ' ' '\n' | grep -x input
+```
+
+## Using the service with systemctl
+
+The service is a normal **systemd user unit** named
+`voice-for-agent-hotkey.service`. After installing it once, control it directly
+with `systemctl`. You do not need `menu.sh` for daily use.
+
+```bash
+# state
+systemctl --user status voice-for-agent-hotkey.service
+
+# start and stop on demand
+systemctl --user start voice-for-agent-hotkey.service
+systemctl --user stop voice-for-agent-hotkey.service
+
+# apply a change
+systemctl --user restart voice-for-agent-hotkey.service
+
+# login behaviour
+systemctl --user enable voice-for-agent-hotkey.service     # start at login
+systemctl --user disable voice-for-agent-hotkey.service    # do not start at login
+
+# logs
+journalctl --user -u voice-for-agent-hotkey.service -n 50 --no-pager
+journalctl --user -u voice-for-agent-hotkey.service -f
+```
+
+Short forms work too:
+
+```bash
+systemctl --user restart voice-for-agent-hotkey
+journalctl --user -u voice-for-agent-hotkey -f
+```
+
+### Where the unit lives
+
+```text
+${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/voice-for-agent-hotkey.service
+```
+
+It is generated from `systemd/voice-for-agent-hotkey.service.in` so the unit
+points at your install folder and a system Python. Reinstalling regenerates it:
+
+```bash
+bash menu.sh service install     # render unit, reload, enable, start
+```
+
+### Remove the service
+
+```bash
+bash menu.sh service remove
+```
+
+That stops it, disables it, deletes the unit, and reloads systemd. `bash
+uninstall.sh` does the same as part of a full removal.
+
+### `menu.sh` service wrappers
+
+These are thin wrappers around `systemctl` if you prefer them:
+
+```bash
+bash menu.sh service install    # same as hotkey install
+bash menu.sh service start
+bash menu.sh service stop
+bash menu.sh service restart
+bash menu.sh service status
+bash menu.sh service enable
+bash menu.sh service disable
+bash menu.sh service logs       # journal for the unit
+bash menu.sh service remove
+```
+
+Run the daemon in the foreground for debugging:
+
+```bash
+bash menu.sh hotkey run
+```
+
+## Voices
+
+The default configuration speaks Hinglish and English with Indian voices, and
+picks the voice from the script of each chunk:
+
+| Text | Voice | Notes |
+|---|---|---|
+| Latin script, e.g. `Bhai ye kaam ho gaya` | `en-IN-PrabhatNeural` | Indian English male, reads Hinglish naturally |
+| Devanagari, e.g. `नमस्ते, काम हो गया` | `hi-IN-MadhurNeural` | Hindi male |
+
+Mixed text that contains Devanagari uses the Hindi voice. `auto_voice` in
+`config.json` controls this. Passing `--voice` explicitly turns auto-selection
+off for that call.
+
+```bash
+./.venv/bin/python speak.py --voice en-IN-PrabhatNeural "Bhai, test pass ho gaya."
+./.venv/bin/python speak.py --voice-hi hi-IN-MadhurNeural "नमस्ते, सब ठीक है।"
+./.venv/bin/python speak.py --no-auto-voice "Force the main voice."
+```
+
+These are synthetic neural voices. They are not a clone of any real person.
+
+### List available voices
+
+```bash
+./.venv/bin/python speak.py --list-voices
+bash menu.sh voices
+```
+
+This lists edge-tts voices when online and every installed piper model in
+`voices/`. The default piper voice is marked `default`.
+
+Useful edge-tts voices:
+
+| Voice | Language | Gender |
+|---|---|---|
+| `en-IN-PrabhatNeural` | Indian English | male |
+| `en-IN-NeerjaNeural` | Indian English | female |
+| `hi-IN-MadhurNeural` | Hindi | male |
+| `hi-IN-SwaraNeural` | Hindi | female |
+| `en-US-AriaNeural` | US English | female |
+
+### Change the voice
+
+Edit `config.json`:
+
+```bash
+bash menu.sh config edit
+```
+
+Then speak again. No reinstall is needed; every new job reads the config.
+
+## Configuration
+
+Create `config.json` from the example:
+
+```bash
+cp config.example.json config.json
+```
+
+```json
+{
+  "engine": "edge",
+  "voice": "en-IN-PrabhatNeural",
+  "voice_hi": "hi-IN-MadhurNeural",
+  "auto_voice": true,
+  "piper_voice": "en_US-ljspeech-high",
+  "rate": "-5%",
+  "pitch": "-8Hz",
+  "max_spoken_chars": 1200
+}
+```
+
+| Key | Type | Meaning |
+|---|---|---|
+| `engine` | `edge` or `piper` | `edge` is online and natural; `piper` is offline. |
+| `voice` | string | edge-tts voice for Latin-script text. |
+| `voice_hi` | string | edge-tts voice for Devanagari text. |
+| `auto_voice` | boolean | Pick `voice_hi` automatically for Devanagari. |
+| `piper_voice` | string | Installed piper model name, without `.onnx`. |
+| `rate` | string | `+10%`, `-5%`, or `0%`. |
+| `pitch` | string | `+10Hz`, `-8Hz`, or `0Hz`. |
+| `max_spoken_chars` | number | Spoken character limit before "the rest is on screen". |
+
+Precedence is: command-line option, then `config.json`, then built-in defaults.
+`config.json` is ignored by git, so your local voice and tone stay private.
+
+`piper_voice` is the stem of an `.onnx` file in `voices/`. The installer reads
+this value and downloads that voice if it is missing. To add a voice later:
+
+```bash
+./.venv/bin/python -m piper.download_voices en_US-ljspeech-high --data-dir voices
+```
+
+Check the voice's `MODEL_CARD` before using it commercially. Several Piper
+voices have non-commercial or research-only terms.
+
+## CLI reference
 
 ### Speak text
 
@@ -321,16 +401,8 @@ du -sh .venv voices .run .tmp 2>/dev/null
 ./.venv/bin/python speak.py "Deployment finished. Two tests failed."
 ```
 
-The default engine is `edge`. If edge-tts fails (for example, no network), the
-tool logs one line and falls back to piper automatically.
-
-### Read from a file or stdin
-
-```bash
-./.venv/bin/python speak.py --file notes.md
-./.venv/bin/python speak.py --file - < notes.md
-cat notes.md | ./.venv/bin/python speak.py
-```
+The default engine is `edge`. If edge-tts fails, for example with no network,
+the tool logs one line and falls back to piper automatically.
 
 ### Clean text without speaking
 
@@ -349,55 +421,19 @@ hashes, tables, emoji, and ANSI escapes. It keeps the readable words.
 ```
 
 The output container follows the engine: edge writes MP3, piper writes WAV. If
-you pass a different extension, it is corrected and the actual path is printed.
+you pass a different extension it is corrected, and the actual path is printed.
 If edge-tts falls back to piper, the actual `.wav` path is printed.
 
-### List available voices
-
-```bash
-./.venv/bin/python speak.py --list-voices
-```
-
-This lists edge-tts voices when online and every installed piper model in
-`voices/`. The default piper voice is marked `default`.
-
-### Hinglish and Indian English voices
-
-By default the tool picks the voice from the script of the text:
-
-| Text | Voice | Notes |
-|---|---|---|
-| Latin script, e.g. `Bhai ye kaam ho gaya` | `en-IN-PrabhatNeural` | Indian English male, reads Hinglish naturally |
-| Devanagari, e.g. `नमस्ते, काम हो गया` | `hi-IN-MadhurNeural` | Hindi male |
-
-Mixed text that contains Devanagari uses the Hindi voice. This is controlled by
-`auto_voice` in `config.json`. Passing `--voice` explicitly turns auto-selection
-off for that call.
-
-```bash
-./.venv/bin/python speak.py --voice en-IN-PrabhatNeural "Bhai, test pass ho gaya."
-./.venv/bin/python speak.py --voice-hi hi-IN-MadhurNeural "नमस्ते, सब ठीक है।"
-./.venv/bin/python speak.py --no-auto-voice "Force the main voice."
-```
-
-These are synthetic neural voices. They are not a clone of any real person.
-
-### Choose an engine, voice, or rate
+### Choose an engine, voice, rate, or pitch
 
 ```bash
 ./.venv/bin/python speak.py --engine piper --piper-voice en_US-ljspeech-high "Offline speech."
-./.venv/bin/python speak.py --engine edge --voice en-US-AriaNeural --rate +10% "Faster speech."
+./.venv/bin/python speak.py --engine edge --voice en-IN-PrabhatNeural --rate +10% "Faster speech."
 ./.venv/bin/python speak.py --rate -5% "Slower speech."
 ./.venv/bin/python speak.py --pitch -8Hz "Deeper speech."
 ```
 
-`--voice` selects an edge-tts voice. `--voice-hi` selects the voice used for
-Devanagari text. `--piper-voice` selects an installed piper model by its file
-stem. `--rate` accepts values such as `+10%`, `-5%`, or `0%`. `--pitch` accepts
-values such as `+10Hz`, `-8Hz`, or `0Hz`. Negative values are accepted as
-separate arguments.
-
-### CLI options
+### Options
 
 | Option | Meaning |
 |---|---|
@@ -405,8 +441,8 @@ separate arguments.
 | `--file PATH` | Read text from a file. Use `-` for stdin. |
 | `--async` | Queue speech and return immediately. |
 | `--engine {edge,piper}` | Force one synthesis engine. |
-| `--voice NAME` | edge-tts voice name. |
-| `--voice-hi NAME` | edge-tts voice used for Devanagari text. |
+| `--voice NAME` | edge-tts voice for Latin-script text. |
+| `--voice-hi NAME` | edge-tts voice for Devanagari text. |
 | `--auto-voice` / `--no-auto-voice` | Pick the Hindi voice automatically for Devanagari. |
 | `--piper-voice NAME` | Installed piper voice name (file stem). |
 | `--rate +10%` | Speech rate adjustment. |
@@ -415,82 +451,10 @@ separate arguments.
 | `--output PATH` | Synthesize to a file instead of playing. |
 | `--clean-only` | Print cleaned text and exit. |
 | `--list-voices` | List edge-tts and installed piper voices. |
+| `--is-speaking` | Print `speaking` or `idle`. |
 | `stop` | Stop current speech and invalidate every queued job. |
 
-## Uninstall
-
-Preview what will be removed:
-
-```bash
-bash uninstall.sh --dry-run
-```
-
-Remove generated files with a confirmation prompt:
-
-```bash
-bash uninstall.sh
-```
-
-Remove without prompting, for an agent after the user confirms:
-
-```bash
-bash uninstall.sh --yes
-```
-
-Keep downloaded voices and/or local config:
-
-```bash
-bash uninstall.sh --yes --keep-voices --keep-config
-```
-
-`uninstall.sh` removes `.venv/`, `voices/`, `.run/`, `.tmp/`, `config.json`,
-`__pycache__/`, and `*.pyc`. It never removes source files, documentation,
-examples, tests, `LICENSE`, or `THIRD_PARTY_NOTICES.md`.
-
-## Configuration
-
-Copy the example and edit it:
-
-```bash
-cp config.example.json config.json
-```
-
-```json
-{
-  "engine": "edge",
-  "voice": "en-US-AriaNeural",
-  "voice_hi": "hi-IN-MadhurNeural",
-  "auto_voice": true,
-  "piper_voice": "en_US-ljspeech-high",
-  "rate": "+0%",
-  "pitch": "+0Hz",
-  "max_spoken_chars": 1200
-}
-```
-
-For an Indian English male voice with a calmer tone, use:
-
-```json
-{
-  "voice": "en-IN-PrabhatNeural",
-  "voice_hi": "hi-IN-MadhurNeural",
-  "rate": "-5%",
-  "pitch": "-8Hz"
-}
-```
-
-Precedence is: command-line option, then `config.json`, then built-in defaults.
-`config.json` is ignored by git.
-
-`piper_voice` is the stem of an `.onnx` file in `voices/`. The installer reads
-this value and downloads that voice if it is missing. To add a voice later:
-
-```bash
-./.venv/bin/python -m piper.download_voices en_US-ljspeech-high --data-dir voices
-```
-
-Check the voice's `MODEL_CARD` before using it commercially. Several Piper
-voices have non-commercial or research-only terms.
+Negative values are accepted as separate arguments: `--rate -5%`, `--pitch -8Hz`.
 
 ## MCP server
 
@@ -503,8 +467,6 @@ The server speaks with the same `config.json` as the CLI. It uses stdio, so it
 does not open a network port.
 
 ### OpenCode
-
-From this folder:
 
 ```bash
 opencode mcp add voice-for-agent -- \
@@ -552,13 +514,14 @@ tools may appear as `voice-for-agent_speak` and
 `voice-for-agent_stop_speaking`. The underlying names are `speak` and
 `stop_speaking`.
 
-## Agent rules
+## Agent rules and skill
 
-`AGENTS.md` contains the speaking policy. `AGENT_GUIDE.md` contains the
-operations policy: install, uninstall, status, tests, config, and safety. Paste
-`AGENTS.md` into the rules file of the agent you use, after registering the MCP
-server. Tell the agent to read `AGENT_GUIDE.md` before running install, remove,
-or repair commands.
+| File | Purpose |
+|---|---|
+| `AGENTS.md` | Pasteable rules: when and how the agent should speak. |
+| `AGENT_GUIDE.md` | Operations guide: install, service, status, tests, config, safety. |
+| `SKILL.md` | Portable skill entry point for any agent given this repository URL. |
+| `.opencode/skills/voice-for-agent/SKILL.md` | OpenCode-discoverable skill. |
 
 `AGENTS.md` tells the agent to:
 
@@ -573,54 +536,183 @@ or repair commands.
 The full answer stays on screen. Only the short summary is spoken. Check the
 current audio state with `bash menu.sh speaking`.
 
-## How it works
+## Update
 
-1. Read text from arguments, a file, or stdin.
-2. Clean markdown, URLs, code blocks, paths, hashes, tables, and emoji.
-3. Limit the spoken text to `max_spoken_chars` and append "The rest is on screen."
-4. Split the result into chunks of about 200 characters.
-5. Synthesize each chunk with edge-tts, or piper after an edge failure.
-6. Play the chunk through the first available player.
-7. Delete the temporary audio and release the queue.
+```bash
+cd /path/to/voice-for-agent
+git pull --ff-only
+bash install.sh
+bash menu.sh service install     # only if the unit or service changed
+bash menu.sh status
+```
 
-Speech jobs are serialized with `flock`, so two agents do not talk over each
-other. `stop` increments a generation counter and kills the current worker and
-player process group; queued workers see the new generation and exit without
-speaking.
+With the bootstrap install folder:
 
-Runtime state lives in `.run/`. Temporary audio lives in `.tmp/`. Both are
-ignored by git.
+```bash
+cd "${XDG_DATA_HOME:-$HOME/.local/share}/voice-for-agent"
+git pull --ff-only
+bash install.sh
+```
+
+`config.json`, `voices/`, and `.run/` are untouched by `git pull`.
+
+## Uninstall
+
+Preview what will be removed:
+
+```bash
+bash uninstall.sh --dry-run
+```
+
+Remove with a confirmation prompt:
+
+```bash
+bash uninstall.sh
+```
+
+Remove without prompting, for an agent after the user confirms:
+
+```bash
+bash uninstall.sh --yes
+```
+
+Keep downloaded voices and local config:
+
+```bash
+bash uninstall.sh --yes --keep-voices --keep-config
+```
+
+`uninstall.sh` removes:
+
+- `.venv/`
+- `voices/` (unless `--keep-voices`)
+- `.run/`
+- `.tmp/`
+- `config.json` (unless `--keep-config`)
+- `__pycache__/` and `*.pyc`
+- the `voice-for-agent-hotkey.service` user unit, if installed
+
+It never removes source files, documentation, examples, tests, `LICENSE`, or
+`THIRD_PARTY_NOTICES.md`.
+
+After a full uninstall, remove the MCP registration from your agent client, and
+optionally leave the `input` group:
+
+```bash
+sudo gpasswd -d "$USER" input
+```
+
+## Files and layout
+
+| Path | What it is |
+|---|---|
+| `menu.sh` | Single entry point: interactive menu and all commands. |
+| `speak.py` | CLI, text cleaner, chunker, synthesis, playback, queue, stop. |
+| `mcp_server.py` | Thin FastMCP stdio wrapper exposing `speak` and `stop_speaking`. |
+| `hotkey.py` | Double-tap Ctrl daemon that reads `/dev/input`. |
+| `systemd/voice-for-agent-hotkey.service.in` | Unit template, rendered on install. |
+| `install.sh` | Idempotent setup and self-test. Never uses `sudo`. |
+| `uninstall.sh` | Removes generated files, config, voices, and the user unit. |
+| `bootstrap.sh` | Clone or update from a Git URL, install, optionally register OpenCode. |
+| `requirements.txt` | Pinned Python dependencies. |
+| `config.example.json` | Example local configuration. |
+| `AGENTS.md` | Pasteable speaking rules for agents. |
+| `AGENT_GUIDE.md` | Operations guide for agents. |
+| `SKILL.md` | Portable agent-skill entry point. |
+| `.opencode/skills/voice-for-agent/SKILL.md` | OpenCode-discoverable skill. |
+| `examples/` | Registration snippets for OpenCode, Claude Code, Gemini CLI. |
+| `tests/smoke_test.sh` | End-to-end tests. |
+| `tests/test_hotkey.py` | Double-tap Ctrl detector unit tests. |
+| `tests/test_voice.py` | Voice selection, rate, and pitch unit tests. |
+| `.github/workflows/ci.yml` | CI: syntax checks and unit tests. |
+| `LICENSE` | MIT License for this project. |
+| `THIRD_PARTY_NOTICES.md` | Dependency and voice-model license notes. |
+| `.venv/`, `voices/*.onnx`, `.run/`, `.tmp/` | Generated locally, ignored by git. |
+
+Everything persistent stays inside the install folder, except the optional user
+unit in `~/.config/systemd/user/`.
+
+| Path | Approximate size | Purpose |
+|---|---:|---|
+| `.venv/` | 284 MB | Local Python environment and packages. |
+| `voices/` | 109 MB for the default voice | Downloaded piper model and config. |
+| `.run/` | small | Locks, generation counter, log. |
+| `.tmp/` | small | Temporary audio, deleted after playback. |
+| `config.json` | small | Optional local configuration. |
+
+```bash
+du -sh .venv voices .run .tmp 2>/dev/null
+```
+
+Pip caching is disabled with `--no-cache-dir`, so no persistent package cache is
+kept in `~/.cache/pip`.
 
 ## Tests
 
 ```bash
-bash tests/smoke_test.sh
+bash menu.sh test
 ```
 
-Or use the menu entry point:
+or directly:
 
 ```bash
-bash menu.sh test
+bash tests/smoke_test.sh
 ```
 
 The smoke test checks:
 
 1. edge-tts produces audio (requires network);
 2. piper produces audio offline;
-3. the text cleaner removes markdown, URLs, code, paths, hashes, tables, and emoji;
+3. the text cleaner removes markdown, URLs, code, paths, hashes, tables, emoji;
 4. the MCP server starts and lists `speak` and `stop_speaking`;
-5. real playback works, or an audio-file fallback passes when no audio device is
-   available.
+5. real playback works, or an audio-file fallback passes with no audio device;
+6. the double-tap Ctrl detector unit tests;
+7. voice selection, rate, and pitch unit tests.
 
-`install.sh` runs the same test at the end.
+`install.sh` runs the same suite at the end.
 
 ## Troubleshooting
 
-Start with:
+Start here:
 
 ```bash
 bash menu.sh status
+bash menu.sh log
+systemctl --user status voice-for-agent-hotkey.service
 ```
+
+### Service problems
+
+**`Unit voice-for-agent-hotkey.service could not be found`** — the unit is not
+installed. Run `bash menu.sh service install`.
+
+**Service is `active` but double-tap Ctrl does nothing** — check group access and
+the log:
+
+```bash
+id -nG | tr ' ' '\n' | grep -x input
+bash menu.sh log 20
+journalctl --user -u voice-for-agent-hotkey.service -n 30 --no-pager
+```
+
+The log line `hotkey: watching N input device(s)` means it found keyboards. If it
+says `no readable /dev/input devices`, add yourself to the `input` group and log
+out and back in.
+
+**Double-tap works, but nothing is spoken** — the selection may be empty. The
+daemon falls back to the clipboard. Check that `xclip` or `wl-clipboard` is
+installed, and look at `.run/speak.log` for `speak-selection` lines.
+
+**Service dies after a crash** — `Restart=on-failure` with `RestartSec=5` brings
+it back automatically. Confirm with `systemctl --user status`.
+
+**Service does not start at login** — enable it:
+
+```bash
+systemctl --user enable voice-for-agent-hotkey.service
+```
+
+### Speech problems
 
 **`edge-tts failed, falling back to piper`** — edge-tts needs network access.
 Piper still works offline. To force local speech, use `--engine piper`.
@@ -636,11 +728,10 @@ sudo apt update && sudo apt install -y mpv ffmpeg
 ```
 
 **`playback failed`** — the player exists but cannot reach an audio device.
-Check your desktop audio, PipeWire/PulseAudio, or WSL audio setup. `ffplay` is a
-useful diagnostic because it prints errors when run manually.
+Check desktop audio, PipeWire/PulseAudio, or WSL audio. Run `ffplay` manually to
+see the error.
 
-**No sound but no error** — synthesize a file and play it with your normal audio
-player:
+**No sound but no error** — synthesize a file and play it with your normal player:
 
 ```bash
 ./.venv/bin/python speak.py --engine piper --output test.wav "test"
@@ -649,9 +740,14 @@ player:
 **`nothing to speak`** — the input was empty, or the cleaner removed everything
 (code blocks and URLs only). Check with `--clean-only`.
 
+**Wrong language voice** — Devanagari uses `voice_hi`; Latin script uses `voice`.
+Set `auto_voice` to `false` to always use `voice`.
+
+### Agent and MCP problems
+
 **MCP client does not show the tools** — use absolute paths to
 `.venv/bin/python` and `mcp_server.py`, then run the command manually to see
-startup errors. The server must run from an environment where `mcp` is installed.
+startup errors. The server must run where `mcp` is installed, which is `.venv/`.
 
 **`install.sh` cannot find a supported Python** — install Python 3.11 or 3.12
 and `python3-venv`. Python 3.14 is intentionally rejected by the piper stack.
@@ -659,6 +755,17 @@ and `python3-venv`. Python 3.14 is intentionally rejected by the piper stack.
 **A queued job will not stop** — run `./.venv/bin/python speak.py stop`. If a
 stale process remains, inspect it with `ps -ef | grep speak.py` before killing
 anything.
+
+## Platform support
+
+- **Linux:** supported.
+- **WSL:** supported; audio depends on the WSL audio setup. systemd user services
+  need systemd enabled in WSL.
+- **macOS:** not supported by the current installer or player list. The Python
+  code uses Unix features, but `install.sh` is Debian/apt-specific and there is
+  no `afplay` support yet.
+- **Native Windows:** not supported. `speak.py` uses `fcntl` and Unix process
+  groups for queueing and stop. Use WSL instead.
 
 ## Privacy and security
 
@@ -668,11 +775,13 @@ anything.
   machine.
 - There are no API keys, accounts, telemetry, or network listeners.
 - The MCP server uses stdio only.
+- The hotkey service reads `/dev/input` but stores no keystrokes. It keeps only
+  Ctrl press and release timing in memory and never writes key data to disk.
 - Text is passed to subprocesses as argument lists, not through a shell.
 - `--file` reads any path the current user can read; treat it like any other
   file-reading CLI.
-- Async fallback errors go to `.run/speak.log`. Temporary audio is deleted after
-  each chunk and by `stop`.
+- Async errors go to `.run/speak.log`. Temporary audio is deleted after each
+  chunk and by `stop`.
 
 ## Limits
 
@@ -682,6 +791,7 @@ anything.
   stays on screen.
 - Speech is serialized. A second job waits for the first unless you call `stop`.
 - One piper voice is installed by default. Add more with the download command.
+- The hotkey service needs `systemd` user units and `input` group access.
 - No native Windows or macOS installer is included. WSL/Linux is the tested path.
 
 ## Voice models and licensing
@@ -702,6 +812,8 @@ the Lessac voice and carry research-only or non-commercial terms. The older
 license and is not suitable for commercial use. Check the `MODEL_CARD` of any
 voice you redistribute or use commercially.
 
+Edge-tts voices are provided by Microsoft under its terms of service.
+
 This project's own code is licensed under the **MIT License**. It uses
 third-party dependencies under their own terms: `edge-tts` is LGPL-3.0,
 `piper-tts` is GPL-3.0-or-later, and `mcp` and `onnxruntime` are MIT. See
@@ -712,7 +824,7 @@ GPL-3.0-or-later terms for that combined distribution.
 
 ## Repository hygiene
 
-The repository is set up so generated and private files are not committed:
+Generated and private files are ignored by git:
 
 - `.venv/` — local Python environment;
 - `voices/*.onnx` and `voices/*.onnx.json` — downloaded voice models;
@@ -721,9 +833,7 @@ The repository is set up so generated and private files are not committed:
 - `__pycache__/`, `*.pyc`, audio files, and logs.
 
 Before publishing, run `git status` and confirm none of those appear. The
-example registration files use `/ABSOLUTE/PATH/TO/voice-for-agent` placeholders;
-replace them with your own absolute path locally, but do not commit machine-
-specific paths.
+example registration files use `/ABSOLUTE/PATH/TO/voice-for-agent` placeholders.
 
 ## Publish to GitHub
 
@@ -739,20 +849,15 @@ git remote add origin https://github.com/rishb0/voice-for-agent.git
 git push -u origin main
 ```
 
-Before committing, confirm `git status` does not show:
+Confirm `git status` does not show `.venv/`, `voices/*.onnx`, `.run/`, `.tmp/`,
+or `config.json`.
 
-- `.venv/`
-- `voices/*.onnx`
-- `.run/`
-- `.tmp/`
-- `config.json`
+The documentation uses `rishb0` as the publishing account. If you push to a
+different account or organization, replace `rishb0` in `README.md`, `SKILL.md`,
+`AGENT_GUIDE.md`, `bootstrap.sh`, and the `.opencode` skill. Set the repository
+visibility to public, enable Issues, and add topics such as `text-to-speech`,
+`tts`, `mcp`, `opencode`, `piper`, and `edge-tts`.
 
-The documentation already uses `rishb0` as the publishing account. If you push
-to a different account or organization, replace `rishb0` in `README.md`,
-`SKILL.md`, `AGENT_GUIDE.md`, `bootstrap.sh`, and the `.opencode` skill. Set the
-GitHub repository visibility to public, enable Issues, and add topics such as
-`text-to-speech`, `tts`, `mcp`, `opencode`, `piper`, and `edge-tts`.
-
-The included GitHub Actions workflow runs syntax checks and a text-cleaner smoke
-test on every push and pull request. It does not need network, audio hardware, or
-the piper voice model.
+The GitHub Actions workflow runs syntax checks and the unit tests on every push
+and pull request. It does not need network, audio hardware, or the piper voice
+model.

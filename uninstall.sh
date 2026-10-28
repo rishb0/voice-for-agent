@@ -70,6 +70,11 @@ for target in "${TARGETS[@]}"; do
     FOUND=1
   fi
 done
+HOTKEY_UNIT="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/voice-for-agent-hotkey.service"
+if [ -f "$HOTKEY_UNIT" ]; then
+  echo "  $HOTKEY_UNIT"
+  FOUND=1
+fi
 if [ "$FOUND" -eq 0 ]; then
   echo "  (nothing; already clean)"
 fi
@@ -99,7 +104,6 @@ for target in "${TARGETS[@]}"; do
 done
 find "$ROOT" -maxdepth 2 -name '*.pyc' -delete 2>/dev/null || true
 
-HOTKEY_UNIT="$HOME/.config/systemd/user/voice-for-agent-hotkey.service"
 if [ -f "$HOTKEY_UNIT" ]; then
   systemctl --user disable --now voice-for-agent-hotkey.service >/dev/null 2>&1 || true
   rm -f "$HOTKEY_UNIT"

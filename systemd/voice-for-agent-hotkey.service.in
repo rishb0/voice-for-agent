@@ -1,0 +1,17 @@
+[Unit]
+Description=voice-for-agent double-tap Ctrl hotkey
+Documentation=file://@ROOT_URI@/README.md
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart="@PYTHON@" -u "@ROOT@/hotkey.py"
+Restart=on-failure
+RestartSec=5
+# Keyboard reads need the input group. The unit runs as your user, so it
+# inherits your group membership. Nothing is run as root.
+Nice=5
+
+[Install]
+WantedBy=graphical-session.target

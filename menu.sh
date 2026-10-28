@@ -70,15 +70,18 @@ Usage:
   bash menu.sh speak-clipboard    Speak clipboard text in the background
   bash menu.sh speak-selection    Speak selected text in the background
   bash menu.sh toggle             Stop if speaking, otherwise speak selection
-  bash menu.sh hotkey install     Double-tap Ctrl to speak or stop (login service)
+  bash menu.sh hotkey install     Install the double-tap Ctrl service (once)
   bash menu.sh hotkey status      Show the double-tap Ctrl service
   bash menu.sh hotkey remove      Remove the double-tap Ctrl service
-  bash menu.sh service start      Start the global double-tap Ctrl service
+  bash menu.sh service install    Same as hotkey install
+  bash menu.sh service start      Start the service now
   bash menu.sh service stop       Stop it until started again
   bash menu.sh service restart    Restart it
   bash menu.sh service status     Show the service state
   bash menu.sh service enable     Start it at login again
   bash menu.sh service disable    Do not start it at login
+  bash menu.sh service logs       Show the service journal
+  bash menu.sh service remove     Remove the service
   bash menu.sh stop               Stop speech and clear the queue
   bash menu.sh speaking           Check if speech is currently playing
   bash menu.sh log                Show recent speech activity and errors
@@ -322,60 +325,84 @@ toggle_cmd() {
   fi
 }
 
+UNIT_NAME="voice-for-agent-hotkey.service"
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+UNIT_PATH="$UNIT_DIR/$UNIT_NAME"
+UNIT_TEMPLATE="$ROOT/systemd/$UNIT_NAME.in"
+
+render_unit() {
+  local template="$UNIT_TEMPLATE"
+  local python_bin=""
+  local candidate
+  if [ ! -f "$template" ]; then
+    echo "Missing unit template: $template" >&2
+    return 1
+  fi
+  # Prefer a fixed system interpreter: systemd does not load shell profiles,
+  # so pyenv or asdf shims can fail inside the service.
+  for candidate in /usr/bin/python3 /usr/local/bin/python3; do
+    if [ -x "$candidate" ] && "$candidate" -c 'import sys' >/dev/null 2>&1; then
+      python_bin="$candidate"
+      break
+    fi
+  done
+  if [ -z "$python_bin" ]; then
+    candidate="$(command -v python3 || true)"
+    if [ -n "$candidate" ] && "$candidate" -c 'import sys' >/dev/null 2>&1; then
+      python_bin="$candidate"
+    fi
+  fi
+  if [ -z "$python_bin" ]; then
+    echo "python3 is required to run the hotkey service." >&2
+    return 1
+  fi
+  mkdir -p "$UNIT_DIR" || return 1
+  local root_uri="${ROOT// /%20}"
+  sed -e "s|@ROOT_URI@|$root_uri|g" \
+    -e "s|@ROOT@|$ROOT|g" \
+    -e "s|@PYTHON@|$python_bin|g" \
+    "$template" >"$UNIT_PATH" || return 1
+}
+
+unit_installed() {
+  [ -f "$UNIT_PATH" ]
+}
+
 hotkey_cmd() {
   local action="${1:-status}"
-  local unit="$HOME/.config/systemd/user/voice-for-agent-hotkey.service"
-  local service="voice-for-agent-hotkey.service"
   case "$action" in
     run)
       exec python3 "$ROOT/hotkey.py"
       ;;
     install)
-      if ! command -v python3 >/dev/null 2>&1; then
-        echo "python3 is required." >&2
-        return 1
-      fi
-      mkdir -p "$(dirname "$unit")"
-      cat >"$unit" <<EOF
-[Unit]
-Description=voice-for-agent double-tap Ctrl hotkey
-After=graphical-session.target
-PartOf=graphical-session.target
-
-[Service]
-ExecStart=/usr/bin/python3 -u $ROOT/hotkey.py
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=graphical-session.target
-EOF
-      systemctl --user daemon-reload
-      systemctl --user disable "$service" >/dev/null 2>&1 || true
-      systemctl --user enable "$service" >/dev/null 2>&1
-      if systemctl --user restart "$service"; then
+      render_unit || return 1
+      systemctl --user daemon-reload || return 1
+      systemctl --user disable "$UNIT_NAME" >/dev/null 2>&1 || true
+      systemctl --user enable "$UNIT_NAME" >/dev/null 2>&1
+      if systemctl --user restart "$UNIT_NAME"; then
         sleep 1
-        if systemctl --user is-active --quiet "$service"; then
-          echo "Installed: $unit"
-          echo "Double-tap Ctrl to speak the selection or stop speech."
+        if systemctl --user is-active --quiet "$UNIT_NAME"; then
+          echo "Installed: $UNIT_PATH"
+          echo "Enabled at login: $UNIT_NAME"
+          echo "Control it with systemctl --user start|stop|status $UNIT_NAME"
         else
-          echo "Installed, but $service is not running. Check:" >&2
-          echo "  bash menu.sh hotkey status" >&2
+          echo "Installed, but $UNIT_NAME is not running. Check:" >&2
+          echo "  systemctl --user status $UNIT_NAME" >&2
           return 1
         fi
       else
-        echo "Could not start $service" >&2
+        echo "Could not start $UNIT_NAME" >&2
         return 1
       fi
       ;;
     remove)
-      systemctl --user disable --now "$service" >/dev/null 2>&1 || true
-      rm -f "$unit"
+      systemctl --user disable --now "$UNIT_NAME" >/dev/null 2>&1 || true
+      rm -f "$UNIT_PATH"
       systemctl --user daemon-reload
-      echo "Removed double-tap Ctrl hotkey."
+      echo "Removed $UNIT_NAME"
       ;;
     status)
-      systemctl --user status "$service" --no-pager 2>&1 | sed -n '1,12p'
+      systemctl --user status "$UNIT_NAME" --no-pager 2>&1 | sed -n '1,12p'
       ;;
     *)
       echo "Usage: bash menu.sh hotkey [install|status|remove|run]" >&2
@@ -386,32 +413,46 @@ EOF
 
 service_cmd() {
   local action="${1:-status}"
-  local service="voice-for-agent-hotkey.service"
-  if ! systemctl --user cat "$service" >/dev/null 2>&1; then
-    echo "Service is not installed. Run: bash menu.sh hotkey install" >&2
+  case "$action" in
+    install)
+      hotkey_cmd install
+      return $?
+      ;;
+    remove | uninstall)
+      hotkey_cmd remove
+      return $?
+      ;;
+    logs)
+      journalctl --user -u "$UNIT_NAME" -n "${2:-50}" --no-pager
+      return $?
+      ;;
+  esac
+  if ! unit_installed; then
+    echo "$UNIT_NAME is not installed." >&2
+    echo "Install it once with: bash menu.sh service install" >&2
     return 1
   fi
   case "$action" in
     start)
-      systemctl --user start "$service" && echo "Started $service"
+      systemctl --user start "$UNIT_NAME" && echo "Started $UNIT_NAME"
       ;;
     stop)
-      systemctl --user stop "$service" && echo "Stopped $service"
+      systemctl --user stop "$UNIT_NAME" && echo "Stopped $UNIT_NAME"
       ;;
     restart)
-      systemctl --user restart "$service" && echo "Restarted $service"
+      systemctl --user restart "$UNIT_NAME" && echo "Restarted $UNIT_NAME"
       ;;
     enable)
-      systemctl --user enable "$service" >/dev/null 2>&1 && echo "Enabled at login"
+      systemctl --user enable "$UNIT_NAME" >/dev/null 2>&1 && echo "Enabled at login"
       ;;
     disable)
-      systemctl --user disable "$service" >/dev/null 2>&1 && echo "Disabled at login"
+      systemctl --user disable "$UNIT_NAME" >/dev/null 2>&1 && echo "Disabled at login"
       ;;
     status)
-      systemctl --user status "$service" --no-pager 2>&1 | sed -n '1,12p'
+      systemctl --user status "$UNIT_NAME" --no-pager 2>&1 | sed -n '1,12p'
       ;;
     *)
-      echo "Usage: bash menu.sh service [start|stop|restart|status|enable|disable]" >&2
+      echo "Usage: bash menu.sh service [install|start|stop|restart|status|enable|disable|logs|remove]" >&2
       return 2
       ;;
   esac
@@ -466,6 +507,8 @@ interactive_menu() {
     echo "9) Uninstall"
     echo "10) Speak clipboard"
     echo "11) Speak selected text"
+    echo "12) Install hotkey service"
+    echo "13) Hotkey service status"
     echo "0) Exit"
     printf "Choose: "
     IFS= read -r choice || exit 0
@@ -481,6 +524,8 @@ interactive_menu() {
       9) uninstall_cmd ;;
       10) speak_clipboard_cmd ;;
       11) speak_selection_cmd ;;
+      12) service_cmd install ;;
+      13) service_cmd status ;;
       0) exit 0 ;;
       *) echo "Invalid choice: $choice" ;;
     esac

@@ -1,6 +1,6 @@
 ---
 name: Voice for Agent
-description: Install and use output-only text-to-speech for AI agents. Use when the user wants an agent to speak summaries aloud, install voice-for-agent from a GitHub URL, stop speech, check TTS status, or remove the local speech tool.
+description: Install and use output-only text-to-speech for AI agents. Use when the user wants an agent to speak summaries aloud, install voice-for-agent from a GitHub URL, speak selected text with a double-tap Ctrl hotkey, control the hotkey systemd service, stop speech, check TTS status, or remove the local speech tool.
 license: MIT
 compatibility: Linux, WSL
 ---
@@ -11,8 +11,15 @@ This skill installs a small **output-only** text-to-speech tool. The agent
 writes text; the tool cleans it and speaks it. There is no microphone,
 speech-to-text, or realtime duplex chat.
 
-The canonical portable skill and full install instructions are in the
-repository root `SKILL.md`. The operations guide is `AGENT_GUIDE.md`.
+The full user guide is `README.md` in the repository root. The operations guide
+is `AGENT_GUIDE.md`. This file is the short path for an agent.
+
+## Requirements
+
+- Linux or WSL, with audio output.
+- Python 3.10–3.13.
+- One player: `mpv`, `ffplay`, `paplay`, or `aplay`.
+- For the hotkey service: systemd user units, and the user in the `input` group.
 
 ## Install from a GitHub URL
 
@@ -69,13 +76,10 @@ bash menu.sh async "Build finished. All tests passed."
 bash menu.sh speak-clipboard
 bash menu.sh speak-selection
 bash menu.sh toggle
-bash menu.sh hotkey install
-bash menu.sh service start
-bash menu.sh service stop
 bash menu.sh stop
 ```
 
-Other commands:
+Status and diagnostics:
 
 ```bash
 bash menu.sh status
@@ -84,6 +88,46 @@ bash menu.sh log
 bash menu.sh voices
 bash menu.sh test
 bash menu.sh config
+```
+
+## Double-tap Ctrl service
+
+Install once:
+
+```bash
+bash menu.sh service install
+```
+
+Then control it with `systemctl --user`:
+
+```bash
+systemctl --user status voice-for-agent-hotkey.service
+systemctl --user start voice-for-agent-hotkey.service
+systemctl --user stop voice-for-agent-hotkey.service
+systemctl --user restart voice-for-agent-hotkey.service
+systemctl --user enable voice-for-agent-hotkey.service
+systemctl --user disable voice-for-agent-hotkey.service
+journalctl --user -u voice-for-agent-hotkey.service -n 50 --no-pager
+```
+
+Remove it:
+
+```bash
+bash menu.sh service remove
+```
+
+Tap `Ctrl` twice to speak the selection or the clipboard. Tap it twice again to
+stop. The service needs `input` group membership; ask the user to run
+`sudo usermod -aG input "$USER"` and log out if the log says
+`no readable /dev/input devices`.
+
+## Update
+
+```bash
+git pull --ff-only
+bash install.sh
+bash menu.sh service install     # only if the unit or service changed
+bash menu.sh status
 ```
 
 ## Remove
@@ -100,6 +144,12 @@ Preview:
 bash menu.sh uninstall --dry-run
 ```
 
+Keep voices and config:
+
+```bash
+bash menu.sh uninstall --yes --keep-voices --keep-config
+```
+
 ## Rules
 
 1. Do not run `sudo`. If a system package is missing, show the user the exact
@@ -112,6 +162,9 @@ bash menu.sh uninstall --dry-run
 6. Do not commit `.venv/`, `voices/*.onnx`, `.run/`, `.tmp/`, or `config.json`.
 7. If the user asks to stop talking or mute, call `stop_speaking` and do not
    speak again until told otherwise.
+8. Do not edit the generated unit in `~/.config/systemd/user/` by hand. Change
+   `systemd/voice-for-agent-hotkey.service.in` and rerun
+   `bash menu.sh service install`.
 
 ## Platform and privacy
 
@@ -119,6 +172,7 @@ bash menu.sh uninstall --dry-run
 - macOS and native Windows are not supported by the current installer.
 - `edge-tts` sends text to Microsoft. Use `--engine piper` for private text.
 - Piper runs locally.
+- The hotkey service reads `/dev/input` but stores no keystrokes.
 - No API keys, accounts, telemetry, or network listeners.
 
 ## Defaults
@@ -135,7 +189,7 @@ bash menu.sh uninstall --dry-run
 
 - Chat `speak` comes from the MCP server, so it only works while the agent
   client is running.
-- The double-tap Ctrl service is a login service and works in every app.
+- The double-tap Ctrl service is a systemd user unit and works in every app.
 
 Stopping the hotkey service does not break chat speech, and closing the agent
 does not break the hotkey.

@@ -5,6 +5,16 @@ The `speak` and `stop_speaking` tools come from the voice-for-agent MCP server.
 For install, uninstall, status, tests, config, or the menu, read
 `AGENT_GUIDE.md` and use `bash menu.sh <command>`. Do not guess commands.
 
+For the double-tap Ctrl hotkey service, use `systemctl --user`:
+
+```bash
+systemctl --user start|stop|restart|status voice-for-agent-hotkey.service
+```
+
+Do not edit the unit in `~/.config/systemd/user/` by hand. Change
+`systemd/voice-for-agent-hotkey.service.in` and rerun
+`bash menu.sh service install`.
+
 Default: do not speak unless the user asks.
 
 - "speak", "read aloud", "say it", "voice this": call `speak` with a 2-4

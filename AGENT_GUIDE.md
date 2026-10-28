@@ -5,14 +5,18 @@ run, repair, and remove the tool without guessing commands.
 
 ## Golden rules
 
-1. Use `bash menu.sh <command>` as the single entry point.
-2. Do not install Python packages globally. Use `bash menu.sh install`.
-3. Do not run `sudo`. `install.sh` prints the `apt` command for the user if a
-   system package is missing.
-4. Do not delete files manually. Use `bash menu.sh uninstall`.
-5. Do not commit `.venv/`, `voices/*.onnx`, `.run/`, `.tmp/`, or `config.json`.
-6. Read `AGENTS.md` for how to speak. Read this file for how to operate.
-7. Keep the full answer on screen. Speak only when the user asks or after
+1. Use `bash menu.sh <command>` as the single entry point for install, speak,
+   status, tests, config, and uninstall.
+2. Use `systemctl --user` to control the hotkey service. It is a normal user
+   unit, not something that needs `menu.sh`.
+3. Do not install Python packages globally. Use `bash menu.sh install`.
+4. Do not run `sudo`. `install.sh` prints the `apt` command for the user if a
+   system package is missing. The only user-run `sudo` commands in this project
+   are the optional `input` group and package installs.
+5. Do not delete files manually. Use `bash menu.sh uninstall`.
+6. Do not commit `.venv/`, `voices/*.onnx`, `.run/`, `.tmp/`, or `config.json`.
+7. Read `AGENTS.md` for how to speak. Read this file for how to operate.
+8. Keep the full answer on screen. Speak only when the user asks or after
    "voice on".
 
 ## Intent map
@@ -26,12 +30,16 @@ run, repair, and remove the tool without guessing commands.
 | "speak clipboard" | `bash menu.sh speak-clipboard` |
 | "speak selected text" | `bash menu.sh speak-selection` |
 | "toggle speech" | `bash menu.sh toggle` |
-| "make a shortcut", "double tap ctrl" | `bash menu.sh hotkey install` |
-| "shortcut status" | `bash menu.sh hotkey status` |
-| "start the hotkey service" | `bash menu.sh service start` |
-| "stop the hotkey service" | `bash menu.sh service stop` |
-| "is the hotkey service running?" | `bash menu.sh service status` |
-| "do not start it at login" | `bash menu.sh service disable` |
+| "make a shortcut", "double tap ctrl" | `bash menu.sh service install` |
+| "shortcut status" | `systemctl --user status voice-for-agent-hotkey.service` |
+| "start the hotkey service" | `systemctl --user start voice-for-agent-hotkey.service` |
+| "stop the hotkey service" | `systemctl --user stop voice-for-agent-hotkey.service` |
+| "restart the hotkey service" | `systemctl --user restart voice-for-agent-hotkey.service` |
+| "is the hotkey service running?" | `systemctl --user status voice-for-agent-hotkey.service` |
+| "do not start it at login" | `systemctl --user disable voice-for-agent-hotkey.service` |
+| "start it at login again" | `systemctl --user enable voice-for-agent-hotkey.service` |
+| "hotkey service logs" | `journalctl --user -u voice-for-agent-hotkey.service -n 50 --no-pager` |
+| "remove the hotkey service" | `bash menu.sh service remove` |
 | "stop", "mute", "stop talking" | MCP tool `stop_speaking`, or `bash menu.sh stop` |
 | "is it speaking?" | `bash menu.sh speaking` |
 | "show speech log" | `bash menu.sh log` |
@@ -73,6 +81,12 @@ bash bootstrap.sh \
   --register-opencode
 ```
 
+To install the double-tap Ctrl service at the same time:
+
+```bash
+bash install.sh --with-service
+```
+
 Global OpenCode registration:
 
 ```bash
@@ -104,12 +118,13 @@ absolute paths:
 6. Reads `piper_voice` from `config.json` if present; otherwise uses
    `en_US-ljspeech-high`.
 7. Downloads the piper `.onnx` model and `.onnx.json` config into `voices/`.
-8. Runs the five smoke tests.
-9. Stops with a non-zero exit code if a required step fails.
+8. Runs the smoke tests.
+9. With `--with-service`, installs and enables the hotkey user unit.
+10. Stops with a non-zero exit code if a required step fails.
 
 It does **not** run `sudo`, install system packages, change the system Python,
-create a service, add a startup entry, or write outside this folder. It may use
-temporary directories under `/tmp` during installation. Pip caching is disabled
+or write outside this folder, except the optional user unit in
+`~/.config/systemd/user/` when `--with-service` is used. Pip caching is disabled
 with `--no-cache-dir`.
 
 If install fails because a system package is missing, show the user the exact
@@ -130,50 +145,16 @@ install folder is `${XDG_DATA_HOME:-$HOME/.local/share}/voice-for-agent`.
 | `config.json` | small | Optional local configuration. |
 | `__pycache__/` | small | Python bytecode, safe to delete. |
 
-The install does not write to `/usr`, `/opt`, a system service directory, or
-other home-directory locations outside the install folder. The only outside
-writes are temporary files under `/tmp` during package installation and
-downloads. If the user runs an `apt` command themselves, those system packages
-are installed by the OS package manager, not by this project.
+The only outside write is the optional user unit:
+
+```text
+${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/voice-for-agent-hotkey.service
+```
 
 To see the exact current sizes:
 
 ```bash
 du -sh .venv voices .run .tmp 2>/dev/null
-```
-
-## Remove: what it does
-
-`bash menu.sh uninstall` calls `uninstall.sh`. It removes:
-
-- `.venv/`
-- `voices/` (unless `--keep-voices`)
-- `.run/`
-- `.tmp/`
-- `config.json` (unless `--keep-config`)
-- `__pycache__/` and `*.pyc`
-- the double-tap Ctrl login service, if installed
-
-It never removes `speak.py`, `mcp_server.py`, `menu.sh`, `install.sh`,
-`uninstall.sh`, `README.md`, `AGENTS.md`, `AGENT_GUIDE.md`, `LICENSE`,
-`THIRD_PARTY_NOTICES.md`, `examples/`, or `tests/`.
-
-For an agent, confirm with the user first, then run:
-
-```bash
-bash menu.sh uninstall --yes
-```
-
-To keep downloaded voices and config:
-
-```bash
-bash menu.sh uninstall --yes --keep-voices --keep-config
-```
-
-To preview without deleting:
-
-```bash
-bash menu.sh uninstall --dry-run
 ```
 
 ## Speak and stop
@@ -200,11 +181,55 @@ Two separate pieces:
 
 - The MCP server (`speak`, `stop_speaking`) is started by the client, so chat
   speech only exists while the agent client is running.
-- `voice-for-agent-hotkey.service` is a login service that listens for a double
-  Ctrl tap. It works in every app, with or without the agent open.
+- `voice-for-agent-hotkey.service` is a systemd user unit that listens for a
+  double Ctrl tap. It works in every app, with or without the agent open.
 
 Stopping the hotkey service does not break chat `speak`. Stopping the agent does
 not break the hotkey.
+
+## The hotkey service
+
+Install it once:
+
+```bash
+bash menu.sh service install
+```
+
+This renders `systemd/voice-for-agent-hotkey.service.in` into
+`~/.config/systemd/user/`, reloads systemd, enables it at login, and starts it.
+
+After that, use `systemctl` directly:
+
+```bash
+systemctl --user status voice-for-agent-hotkey.service
+systemctl --user start voice-for-agent-hotkey.service
+systemctl --user stop voice-for-agent-hotkey.service
+systemctl --user restart voice-for-agent-hotkey.service
+systemctl --user enable voice-for-agent-hotkey.service
+systemctl --user disable voice-for-agent-hotkey.service
+journalctl --user -u voice-for-agent-hotkey.service -n 50 --no-pager
+```
+
+Do not edit the generated unit by hand. Change the template and rerun
+`bash menu.sh service install`, or edit the unit and run
+`systemctl --user daemon-reload`.
+
+Remove it:
+
+```bash
+bash menu.sh service remove
+```
+
+`bash uninstall.sh` also removes it.
+
+The service needs the `input` group to read `/dev/input`. If the log says
+`no readable /dev/input devices`, tell the user to run:
+
+```bash
+sudo usermod -aG input "$USER"
+```
+
+and then log out and back in. Do not run `sudo` yourself.
 
 ## Voice selection
 
@@ -283,10 +308,54 @@ If the user changes `piper_voice`, install that voice:
 
 Then run `bash menu.sh status`.
 
+## Update
+
+```bash
+git pull --ff-only
+bash install.sh
+bash menu.sh service install     # only if the unit or service changed
+bash menu.sh status
+```
+
+## Remove: what it does
+
+`bash menu.sh uninstall` calls `uninstall.sh`. It removes:
+
+- `.venv/`
+- `voices/` (unless `--keep-voices`)
+- `.run/`
+- `.tmp/`
+- `config.json` (unless `--keep-config`)
+- `__pycache__/` and `*.pyc`
+- the `voice-for-agent-hotkey.service` user unit, if installed
+
+It never removes `speak.py`, `mcp_server.py`, `menu.sh`, `install.sh`,
+`uninstall.sh`, `hotkey.py`, `systemd/`, `README.md`, `AGENTS.md`,
+`AGENT_GUIDE.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md`, `examples/`, or `tests/`.
+
+For an agent, confirm with the user first, then run:
+
+```bash
+bash menu.sh uninstall --yes
+```
+
+To keep downloaded voices and config:
+
+```bash
+bash menu.sh uninstall --yes --keep-voices --keep-config
+```
+
+To preview without deleting:
+
+```bash
+bash menu.sh uninstall --dry-run
+```
+
 ## Platform support
 
 - **Linux:** supported.
-- **WSL:** supported; audio depends on WSL audio configuration.
+- **WSL:** supported; audio depends on WSL audio configuration, and systemd user
+  services need systemd enabled in WSL.
 - **macOS:** not supported by the current installer or player list. The Python
   code uses Unix features, but `install.sh` is apt/Debian-specific and there is
   no `afplay` support yet.
@@ -302,6 +371,8 @@ code is changed and tested.
 - Piper runs locally.
 - There are no API keys, accounts, telemetry, or network listeners.
 - The MCP server uses stdio only.
+- The hotkey service reads `/dev/input` but stores no keystrokes. It keeps only
+  Ctrl timing in memory.
 - `--file` reads any path the current user can read.
 - Do not send secrets through the edge engine.
 - Do not run `rm -rf` on the project folder. Use `uninstall.sh`.
@@ -311,11 +382,13 @@ code is changed and tested.
 
 1. Run `bash menu.sh status`.
 2. Read the exact error line.
-3. Use `README.md` troubleshooting.
-4. If a system package is missing, show the printed `apt` command and wait for
+3. Use the troubleshooting section in `README.md`.
+4. For the hotkey, run `systemctl --user status voice-for-agent-hotkey.service`
+   and `journalctl --user -u voice-for-agent-hotkey.service -n 50`.
+5. If a system package is missing, show the printed `apt` command and wait for
    the user.
-5. If the voice is missing, rerun `bash menu.sh install` or download the voice.
-6. If MCP tools do not appear, check the absolute path to `.venv/bin/python` and
+6. If the voice is missing, rerun `bash menu.sh install` or download the voice.
+7. If MCP tools do not appear, check the absolute path to `.venv/bin/python` and
    `mcp_server.py` in the client configuration.
 
 Do not modify source files to work around an environment problem unless the user
