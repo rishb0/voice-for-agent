@@ -28,6 +28,10 @@ run, repair, and remove the tool without guessing commands.
 | "toggle speech" | `bash menu.sh toggle` |
 | "make a shortcut", "double tap ctrl" | `bash menu.sh hotkey install` |
 | "shortcut status" | `bash menu.sh hotkey status` |
+| "start the hotkey service" | `bash menu.sh service start` |
+| "stop the hotkey service" | `bash menu.sh service stop` |
+| "is the hotkey service running?" | `bash menu.sh service status` |
+| "do not start it at login" | `bash menu.sh service disable` |
 | "stop", "mute", "stop talking" | MCP tool `stop_speaking`, or `bash menu.sh stop` |
 | "is it speaking?" | `bash menu.sh speaking` |
 | "show speech log" | `bash menu.sh log` |
@@ -148,6 +152,7 @@ du -sh .venv voices .run .tmp 2>/dev/null
 - `.tmp/`
 - `config.json` (unless `--keep-config`)
 - `__pycache__/` and `*.pyc`
+- the double-tap Ctrl login service, if installed
 
 It never removes `speak.py`, `mcp_server.py`, `menu.sh`, `install.sh`,
 `uninstall.sh`, `README.md`, `AGENTS.md`, `AGENT_GUIDE.md`, `LICENSE`,
@@ -189,6 +194,31 @@ bash menu.sh stop
 Do not read code, commands, paths, or long lists aloud. Say what they are
 instead. The full detailed answer stays on screen.
 
+### Chat speech vs the global hotkey
+
+Two separate pieces:
+
+- The MCP server (`speak`, `stop_speaking`) is started by the client, so chat
+  speech only exists while the agent client is running.
+- `voice-for-agent-hotkey.service` is a login service that listens for a double
+  Ctrl tap. It works in every app, with or without the agent open.
+
+Stopping the hotkey service does not break chat `speak`. Stopping the agent does
+not break the hotkey.
+
+## Voice selection
+
+The default configuration speaks Hinglish and English with Indian voices:
+
+| Text | Voice |
+|---|---|
+| Latin script (Hinglish or English) | `en-IN-PrabhatNeural` |
+| Devanagari | `hi-IN-MadhurNeural` |
+
+`auto_voice` chooses between them per chunk. Passing `--voice` disables
+auto-selection for that call. These are synthetic neural voices, not a clone of
+a real person. Never claim a voice is a real person's voice.
+
 ## Status and tests
 
 ```bash
@@ -197,13 +227,15 @@ bash menu.sh test
 ```
 
 `status` checks the virtualenv, packages, voice model, audio player, config
-JSON, and MCP import. `test` runs the same five checks as `install.sh`:
+JSON, MCP import, `input` group access, and hotkey service state. `test` runs:
 
 1. edge-tts audio (network);
 2. piper audio (offline);
 3. text cleaner;
 4. MCP tool listing;
-5. playback, or an audio-file fallback if no audio device is available.
+5. playback, or an audio-file fallback if no audio device is available;
+6. double-tap Ctrl detector unit tests;
+7. voice selection and rate/pitch unit tests.
 
 ## Configuration
 
@@ -224,17 +256,23 @@ The fields are:
 ```json
 {
   "engine": "edge",
-  "voice": "en-US-AriaNeural",
+  "voice": "en-IN-PrabhatNeural",
+  "voice_hi": "hi-IN-MadhurNeural",
+  "auto_voice": true,
   "piper_voice": "en_US-ljspeech-high",
-  "rate": "+0%",
+  "rate": "-5%",
+  "pitch": "-8Hz",
   "max_spoken_chars": 1200
 }
 ```
 
 - `engine`: `edge` (online) or `piper` (offline).
-- `voice`: edge-tts voice name.
+- `voice`: edge-tts voice name for Latin-script text.
+- `voice_hi`: edge-tts voice name for Devanagari text.
+- `auto_voice`: `true` picks `voice_hi` automatically for Devanagari.
 - `piper_voice`: installed piper model name, without `.onnx`.
 - `rate`: `+10%`, `-5%`, or `0%`.
+- `pitch`: `+10Hz`, `-8Hz`, or `0Hz`.
 - `max_spoken_chars`: spoken character limit before "the rest is on screen".
 
 If the user changes `piper_voice`, install that voice:

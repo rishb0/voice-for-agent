@@ -70,6 +70,8 @@ bash menu.sh speak-clipboard
 bash menu.sh speak-selection
 bash menu.sh toggle
 bash menu.sh hotkey install
+bash menu.sh service start
+bash menu.sh service stop
 bash menu.sh stop
 ```
 
@@ -78,6 +80,7 @@ Other commands:
 ```bash
 bash menu.sh status
 bash menu.sh speaking
+bash menu.sh log
 bash menu.sh voices
 bash menu.sh test
 bash menu.sh config
@@ -121,8 +124,20 @@ bash menu.sh uninstall --dry-run
 ## Defaults
 
 - Engine: `edge`
-- Edge voice: `en-US-AriaNeural`
+- Edge voice: `en-IN-PrabhatNeural` (Indian English male, reads Hinglish)
+- Hindi voice: `hi-IN-MadhurNeural`, used automatically for Devanagari text
 - Offline voice: `en_US-ljspeech-high`
-- Rate: `+0%`
+- Rate: `+0%`, pitch: `+0Hz`
 - Spoken limit: `1200` characters
 - License: MIT
+
+## Chat speech vs global hotkey
+
+- Chat `speak` comes from the MCP server, so it only works while the agent
+  client is running.
+- The double-tap Ctrl service is a login service and works in every app.
+
+Stopping the hotkey service does not break chat speech, and closing the agent
+does not break the hotkey.
+
+Voices are synthetic. Never describe them as a real person's voice.

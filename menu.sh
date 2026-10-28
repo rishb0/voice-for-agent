@@ -73,6 +73,12 @@ Usage:
   bash menu.sh hotkey install     Double-tap Ctrl to speak or stop (login service)
   bash menu.sh hotkey status      Show the double-tap Ctrl service
   bash menu.sh hotkey remove      Remove the double-tap Ctrl service
+  bash menu.sh service start      Start the global double-tap Ctrl service
+  bash menu.sh service stop       Stop it until started again
+  bash menu.sh service restart    Restart it
+  bash menu.sh service status     Show the service state
+  bash menu.sh service enable     Start it at login again
+  bash menu.sh service disable    Do not start it at login
   bash menu.sh stop               Stop speech and clear the queue
   bash menu.sh speaking           Check if speech is currently playing
   bash menu.sh log                Show recent speech activity and errors
@@ -85,7 +91,8 @@ Usage:
   bash menu.sh uninstall --yes    Remove generated files without prompting
   bash menu.sh help               Show this help
 
-All commands operate on this folder. Nothing is installed globally.
+All commands operate on this folder. Only the optional double-tap Ctrl service
+is installed outside it, as a user login service.
 EOF
 }
 
@@ -377,6 +384,39 @@ EOF
   esac
 }
 
+service_cmd() {
+  local action="${1:-status}"
+  local service="voice-for-agent-hotkey.service"
+  if ! systemctl --user cat "$service" >/dev/null 2>&1; then
+    echo "Service is not installed. Run: bash menu.sh hotkey install" >&2
+    return 1
+  fi
+  case "$action" in
+    start)
+      systemctl --user start "$service" && echo "Started $service"
+      ;;
+    stop)
+      systemctl --user stop "$service" && echo "Stopped $service"
+      ;;
+    restart)
+      systemctl --user restart "$service" && echo "Restarted $service"
+      ;;
+    enable)
+      systemctl --user enable "$service" >/dev/null 2>&1 && echo "Enabled at login"
+      ;;
+    disable)
+      systemctl --user disable "$service" >/dev/null 2>&1 && echo "Disabled at login"
+      ;;
+    status)
+      systemctl --user status "$service" --no-pager 2>&1 | sed -n '1,12p'
+      ;;
+    *)
+      echo "Usage: bash menu.sh service [start|stop|restart|status|enable|disable]" >&2
+      return 2
+      ;;
+  esac
+}
+
 voices_cmd() {
   require_venv || return 1
   "$PY" "$SPEAK" --list-voices
@@ -456,6 +496,7 @@ case "${1:-menu}" in
   speak-selection|selection) shift; speak_selection_cmd ;;
   toggle) shift; toggle_cmd ;;
   hotkey) shift; hotkey_cmd "$@" ;;
+  service) shift; service_cmd "$@" ;;
   stop) shift; stop_cmd "$@" ;;
   speaking) shift; speaking_cmd ;;
   log) shift; log_cmd "$@" ;;

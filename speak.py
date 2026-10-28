@@ -40,12 +40,16 @@ LOG_FILE = RUN_DIR / "speak.log"
 DEFAULT_CONFIG = {
     "engine": "edge",
     "voice": "en-US-AriaNeural",
+    "voice_hi": "hi-IN-MadhurNeural",
+    "auto_voice": True,
     "piper_voice": PIPER_VOICE,
     "rate": "+0%",
+    "pitch": "+0Hz",
     "max_spoken_chars": 1200,
 }
 MAX_CHUNK_CHARS = 200
 RATE_RE = re.compile(r"^[+-]?\d+%$")
+PITCH_RE = re.compile(r"^[+-]?\d+Hz$")
 TMP_SUFFIXES = {".mp3", ".wav"}
 
 
@@ -53,8 +57,11 @@ TMP_SUFFIXES = {".mp3", ".wav"}
 class Options:
     engine: str = "edge"
     voice: str = "en-US-AriaNeural"
+    voice_hi: str = "hi-IN-MadhurNeural"
+    auto_voice: bool = True
     piper_voice: str = PIPER_VOICE
     rate: str = "+0%"
+    pitch: str = "+0Hz"
     max_chars: int = 1200
 
 
@@ -262,6 +269,15 @@ def normalize_rate(rate: str) -> str:
     return rate
 
 
+def normalize_pitch(pitch: str) -> str:
+    pitch = (pitch or "+0Hz").strip()
+    if not PITCH_RE.match(pitch):
+        raise ValueError(f"invalid pitch {pitch!r}; use a value like +0Hz or -10Hz")
+    if pitch[0] not in "+-":
+        pitch = "+" + pitch
+    return pitch
+
+
 def _piper_length_scale(rate: str) -> float:
     try:
         percent = int(rate.rstrip("%"))
@@ -271,11 +287,17 @@ def _piper_length_scale(rate: str) -> float:
     return 1.0 / speed
 
 
-def synth_edge(text: str, voice: str, rate: str, output: Path) -> None:
+def synth_edge(
+    text: str,
+    voice: str,
+    rate: str,
+    output: Path,
+    pitch: str = "+0Hz",
+) -> None:
     import edge_tts
 
     async def _save() -> None:
-        communicate = edge_tts.Communicate(text, voice, rate=rate)
+        communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
         await communicate.save(str(output))
 
     asyncio.run(_save())
@@ -520,6 +542,20 @@ def _play_file(path: Path, generation: int, job_pid: int, job_id: str) -> bool:
     return False
 
 
+DEVANAGARI_RE = re.compile(r"[\u0900-\u097F]")
+
+
+def _has_devanagari(text: str) -> bool:
+    return bool(DEVANAGARI_RE.search(text))
+
+
+def _voice_for(text: str, options: Options) -> str:
+    """Pick the Hindi voice for Devanagari, the main voice otherwise."""
+    if options.auto_voice and _has_devanagari(text):
+        return options.voice_hi
+    return options.voice
+
+
 def _synthesize(
     text: str,
     engine: str,
@@ -527,8 +563,10 @@ def _synthesize(
     output: Path,
 ) -> tuple[str, Path]:
     if engine == "edge":
+        voice = _voice_for(text, options)
         try:
-            synth_edge(text, options.voice, options.rate, output)
+            synth_edge(text, voice, options.rate, output, options.pitch)
+            log(f"voice: {voice}")
             return "edge", output
         except Exception as exc:
             log(f"edge-tts failed, falling back to piper: {_one_line(exc)}")
@@ -632,10 +670,13 @@ def enqueue(raw_text: str, options: Options, wait: bool = False) -> int:
         options.engine,
         "--voice",
         options.voice,
+        "--voice-hi",
+        options.voice_hi,
+        "--auto-voice" if options.auto_voice else "--no-auto-voice",
         "--piper-voice",
         options.piper_voice,
-        "--rate",
-        options.rate,
+        f"--rate={options.rate}",
+        f"--pitch={options.pitch}",
         "--max-chars",
         str(options.max_chars),
     ]
@@ -701,18 +742,32 @@ def _options_from_args(args: argparse.Namespace) -> Options:
     if engine not in ("edge", "piper"):
         raise ValueError(f"invalid engine {engine!r}; use edge or piper")
     voice = args.voice or config["voice"]
+    voice_hi = args.voice_hi or config.get("voice_hi", DEFAULT_CONFIG["voice_hi"])
+    if not isinstance(voice_hi, str) or not voice_hi.strip():
+        raise ValueError("hindi voice must be a non-empty voice name")
+    auto_voice = config.get("auto_voice", DEFAULT_CONFIG["auto_voice"])
+    if not isinstance(auto_voice, bool):
+        auto_voice = DEFAULT_CONFIG["auto_voice"]
+    if args.voice is not None:
+        auto_voice = False
+    if getattr(args, "auto_voice", None) is not None:
+        auto_voice = bool(args.auto_voice)
     piper_voice = args.piper_voice or config["piper_voice"]
     if not isinstance(piper_voice, str) or not piper_voice.strip():
         raise ValueError("piper voice must be a non-empty voice name")
     rate = normalize_rate(args.rate or config["rate"])
+    pitch = normalize_pitch(args.pitch or config["pitch"])
     max_chars = args.max_chars if args.max_chars is not None else config["max_spoken_chars"]
     if int(max_chars) <= 0:
         raise ValueError("max chars must be greater than zero")
     return Options(
         engine=engine,
         voice=voice,
+        voice_hi=voice_hi.strip(),
+        auto_voice=auto_voice,
         piper_voice=piper_voice.strip(),
         rate=rate,
+        pitch=pitch,
         max_chars=int(max_chars),
     )
 
@@ -723,8 +778,11 @@ def default_options() -> Options:
         argparse.Namespace(
             engine=None,
             voice=None,
+            voice_hi=None,
+            auto_voice=None,
             piper_voice=None,
             rate=None,
+            pitch=None,
             max_chars=None,
         )
     )
@@ -787,8 +845,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--engine", choices=("edge", "piper"))
     parser.add_argument("--voice", help="edge-tts voice name")
+    parser.add_argument(
+        "--voice-hi",
+        dest="voice_hi",
+        help="edge-tts voice used for Devanagari text",
+    )
+    parser.add_argument(
+        "--auto-voice",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="use the Hindi voice automatically for Devanagari text",
+    )
     parser.add_argument("--piper-voice", help="installed piper voice name")
     parser.add_argument("--rate")
+    parser.add_argument("--pitch")
     parser.add_argument("--max-chars", type=int, dest="max_chars")
     parser.add_argument("--list-voices", action="store_true")
     parser.add_argument(
@@ -813,9 +883,30 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _normalize_argv(argv: list[str] | None) -> list[str]:
+    """Keep negative rate and pitch values from looking like options."""
+    values = list(sys.argv[1:] if argv is None else argv)
+    result: list[str] = []
+    index = 0
+    while index < len(values):
+        item = values[index]
+        if (
+            item in ("--rate", "--pitch")
+            and index + 1 < len(values)
+            and values[index + 1].startswith("-")
+            and not values[index + 1].startswith("--")
+        ):
+            result.append(f"{item}={values[index + 1]}")
+            index += 2
+            continue
+        result.append(item)
+        index += 1
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(_normalize_argv(argv))
 
     if args.list_voices:
         return list_voices()

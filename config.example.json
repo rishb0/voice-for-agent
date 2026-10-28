@@ -1,7 +1,10 @@
 {
   "engine": "edge",
   "voice": "en-US-AriaNeural",
+  "voice_hi": "hi-IN-MadhurNeural",
+  "auto_voice": true,
   "piper_voice": "en_US-ljspeech-high",
   "rate": "+0%",
+  "pitch": "+0Hz",
   "max_spoken_chars": 1200
 }

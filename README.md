@@ -69,6 +69,8 @@ bash menu.sh speak-clipboard
 bash menu.sh speak-selection
 bash menu.sh toggle
 bash menu.sh hotkey install
+bash menu.sh service start
+bash menu.sh service stop
 bash menu.sh stop
 bash menu.sh speaking
 bash menu.sh log
@@ -122,6 +124,24 @@ Reading `/dev/input` requires the user to be in the `input` group:
 ```bash
 sudo usermod -aG input "$USER"   # log out and back in afterwards
 ```
+
+### Start or stop the global hotkey service
+
+The hotkey service is independent of OpenCode and of the MCP server. It stays
+running for your whole desktop session, so it works in any app.
+
+```bash
+bash menu.sh service start
+bash menu.sh service stop
+bash menu.sh service restart
+bash menu.sh service status
+bash menu.sh service disable   # do not start at login
+bash menu.sh service enable    # start at login again
+```
+
+`stop` stops it until you start it again. `disable` also keeps it off after the
+next login. Stopping the hotkey service does not affect chat `speak` calls from
+an agent.
 
 ### GNOME custom shortcuts (alternative)
 
@@ -341,16 +361,41 @@ If edge-tts falls back to piper, the actual `.wav` path is printed.
 This lists edge-tts voices when online and every installed piper model in
 `voices/`. The default piper voice is marked `default`.
 
+### Hinglish and Indian English voices
+
+By default the tool picks the voice from the script of the text:
+
+| Text | Voice | Notes |
+|---|---|---|
+| Latin script, e.g. `Bhai ye kaam ho gaya` | `en-IN-PrabhatNeural` | Indian English male, reads Hinglish naturally |
+| Devanagari, e.g. `नमस्ते, काम हो गया` | `hi-IN-MadhurNeural` | Hindi male |
+
+Mixed text that contains Devanagari uses the Hindi voice. This is controlled by
+`auto_voice` in `config.json`. Passing `--voice` explicitly turns auto-selection
+off for that call.
+
+```bash
+./.venv/bin/python speak.py --voice en-IN-PrabhatNeural "Bhai, test pass ho gaya."
+./.venv/bin/python speak.py --voice-hi hi-IN-MadhurNeural "नमस्ते, सब ठीक है।"
+./.venv/bin/python speak.py --no-auto-voice "Force the main voice."
+```
+
+These are synthetic neural voices. They are not a clone of any real person.
+
 ### Choose an engine, voice, or rate
 
 ```bash
 ./.venv/bin/python speak.py --engine piper --piper-voice en_US-ljspeech-high "Offline speech."
 ./.venv/bin/python speak.py --engine edge --voice en-US-AriaNeural --rate +10% "Faster speech."
 ./.venv/bin/python speak.py --rate -5% "Slower speech."
+./.venv/bin/python speak.py --pitch -8Hz "Deeper speech."
 ```
 
-`--voice` selects an edge-tts voice. `--piper-voice` selects an installed piper
-model by its file stem. `--rate` accepts values such as `+10%`, `-5%`, or `0%`.
+`--voice` selects an edge-tts voice. `--voice-hi` selects the voice used for
+Devanagari text. `--piper-voice` selects an installed piper model by its file
+stem. `--rate` accepts values such as `+10%`, `-5%`, or `0%`. `--pitch` accepts
+values such as `+10Hz`, `-8Hz`, or `0Hz`. Negative values are accepted as
+separate arguments.
 
 ### CLI options
 
@@ -361,8 +406,11 @@ model by its file stem. `--rate` accepts values such as `+10%`, `-5%`, or `0%`.
 | `--async` | Queue speech and return immediately. |
 | `--engine {edge,piper}` | Force one synthesis engine. |
 | `--voice NAME` | edge-tts voice name. |
+| `--voice-hi NAME` | edge-tts voice used for Devanagari text. |
+| `--auto-voice` / `--no-auto-voice` | Pick the Hindi voice automatically for Devanagari. |
 | `--piper-voice NAME` | Installed piper voice name (file stem). |
 | `--rate +10%` | Speech rate adjustment. |
+| `--pitch -8Hz` | Speech pitch adjustment in hertz. |
 | `--max-chars N` | Maximum characters spoken before "the rest is on screen". |
 | `--output PATH` | Synthesize to a file instead of playing. |
 | `--clean-only` | Print cleaned text and exit. |
@@ -411,9 +459,23 @@ cp config.example.json config.json
 {
   "engine": "edge",
   "voice": "en-US-AriaNeural",
+  "voice_hi": "hi-IN-MadhurNeural",
+  "auto_voice": true,
   "piper_voice": "en_US-ljspeech-high",
   "rate": "+0%",
+  "pitch": "+0Hz",
   "max_spoken_chars": 1200
+}
+```
+
+For an Indian English male voice with a calmer tone, use:
+
+```json
+{
+  "voice": "en-IN-PrabhatNeural",
+  "voice_hi": "hi-IN-MadhurNeural",
+  "rate": "-5%",
+  "pitch": "-8Hz"
 }
 ```
 

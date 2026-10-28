@@ -165,8 +165,21 @@ else
   skip "Test 6 hotkey detector (python3 missing)"
 fi
 
+# Test 7: Hinglish voice selection and rate/pitch parsing.
+if command -v python3 >/dev/null 2>&1; then
+  if python3 "$ROOT/tests/test_voice.py" >/dev/null 2>"$TMP/voice.err"; then
+    pass "Test 7 voice selection"
+  else
+    fail "Test 7 voice selection"
+    sed 's/^/  /' "$TMP/voice.err" 2>/dev/null || true
+  fi
+else
+  skip "Test 7 voice selection (python3 missing)"
+fi
+
 rm -f "$EDGE_FILE" "$PIPER_FILE" "$SAMPLE" "$TMP/edge.err" \
-  "$TMP/piper.err" "$TMP/play.err" "$TMP/mcp.err" "$TMP/hotkey.err"
+  "$TMP/piper.err" "$TMP/play.err" "$TMP/mcp.err" "$TMP/hotkey.err" \
+  "$TMP/voice.err"
 
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 [ "$FAIL_COUNT" -eq 0 ]
