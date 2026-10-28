@@ -260,7 +260,8 @@ JSON, MCP import, `input` group access, and hotkey service state. `test` runs:
 4. MCP tool listing;
 5. playback, or an audio-file fallback if no audio device is available;
 6. double-tap Ctrl detector unit tests;
-7. voice selection and rate/pitch unit tests.
+7. voice selection and rate/pitch unit tests;
+8. primary selection vs clipboard decision tests.
 
 ## Configuration
 
@@ -284,6 +285,7 @@ The fields are:
   "voice": "en-IN-PrabhatNeural",
   "voice_hi": "hi-IN-MadhurNeural",
   "auto_voice": true,
+  "selection_source": "auto",
   "piper_voice": "en_US-ljspeech-high",
   "rate": "-5%",
   "pitch": "-8Hz",
@@ -295,6 +297,8 @@ The fields are:
 - `voice`: edge-tts voice name for Latin-script text.
 - `voice_hi`: edge-tts voice name for Devanagari text.
 - `auto_voice`: `true` picks `voice_hi` automatically for Devanagari.
+- `selection_source`: `auto`, `primary`, or `clipboard` for the hotkey. `auto`
+  prefers the source that changed most recently.
 - `piper_voice`: installed piper model name, without `.onnx`.
 - `rate`: `+10%`, `-5%`, or `0%`.
 - `pitch`: `+10Hz`, `-8Hz`, or `0Hz`.

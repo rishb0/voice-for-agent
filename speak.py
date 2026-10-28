@@ -39,7 +39,7 @@ LOG_FILE = RUN_DIR / "speak.log"
 
 DEFAULT_CONFIG = {
     "engine": "edge",
-    "voice": "en-US-AriaNeural",
+    "voice": "en-IN-PrabhatNeural",
     "voice_hi": "hi-IN-MadhurNeural",
     "auto_voice": True,
     "piper_voice": PIPER_VOICE,
@@ -56,7 +56,7 @@ TMP_SUFFIXES = {".mp3", ".wav"}
 @dataclass
 class Options:
     engine: str = "edge"
-    voice: str = "en-US-AriaNeural"
+    voice: str = "en-IN-PrabhatNeural"
     voice_hi: str = "hi-IN-MadhurNeural"
     auto_voice: bool = True
     piper_voice: str = PIPER_VOICE

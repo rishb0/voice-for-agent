@@ -177,9 +177,17 @@ else
   skip "Test 7 voice selection (python3 missing)"
 fi
 
+# Test 8: primary selection vs clipboard decision.
+if bash "$ROOT/tests/test_selection.sh" >/dev/null 2>"$TMP/selection.err"; then
+  pass "Test 8 selection source"
+else
+  fail "Test 8 selection source"
+  sed 's/^/  /' "$TMP/selection.err" 2>/dev/null || true
+fi
+
 rm -f "$EDGE_FILE" "$PIPER_FILE" "$SAMPLE" "$TMP/edge.err" \
   "$TMP/piper.err" "$TMP/play.err" "$TMP/mcp.err" "$TMP/hotkey.err" \
-  "$TMP/voice.err"
+  "$TMP/voice.err" "$TMP/selection.err"
 
 echo "SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed"
 [ "$FAIL_COUNT" -eq 0 ]

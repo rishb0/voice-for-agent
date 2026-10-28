@@ -1,8 +1,9 @@
 {
   "engine": "edge",
-  "voice": "en-US-AriaNeural",
+  "voice": "en-IN-PrabhatNeural",
   "voice_hi": "hi-IN-MadhurNeural",
   "auto_voice": true,
+  "selection_source": "auto",
   "piper_voice": "en_US-ljspeech-high",
   "rate": "+0%",
   "pitch": "+0Hz",

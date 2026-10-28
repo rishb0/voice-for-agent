@@ -195,6 +195,7 @@ def run(devices: dict[int, str]) -> None:
                 last_sig_time = now
                 if detector.feed(etype, code, value, now):
                     if now < suppress_until:
+                        log("double Ctrl ignored (cooldown)")
                         continue
                     suppress_until = now + TRIGGER_COOLDOWN_SECONDS
                     trigger()

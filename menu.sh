@@ -15,6 +15,39 @@ log_event() {
   printf '%s menu: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$LOG_FILE" 2>/dev/null || true
 }
 
+hash_text() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | cut -c1-16
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 256 | cut -c1-16
+  else
+    printf '%s' "${#1}:$(printf '%s' "$1" | cksum | cut -d' ' -f1)"
+  fi
+}
+
+config_value() {
+  # $1 key, $2 fallback. Reads config.json without touching the venv.
+  local key="$1" fallback="$2"
+  if [ -f "$ROOT/config.json" ] && command -v python3 >/dev/null 2>&1; then
+    python3 - "$ROOT/config.json" "$key" "$fallback" <<'PY' 2>/dev/null || printf '%s\n' "$fallback"
+import json, sys
+path, key, fallback = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    value = json.load(open(path, encoding="utf-8")).get(key)
+except Exception:
+    value = None
+if isinstance(value, bool):
+    print("true" if value else "false")
+elif isinstance(value, str) and value.strip():
+    print(value.strip())
+else:
+    print(fallback)
+PY
+  else
+    printf '%s\n' "$fallback"
+  fi
+}
+
 notify() {
   if command -v notify-send >/dev/null 2>&1; then
     notify-send -a voice-for-agent "voice-for-agent" "$1" >/dev/null 2>&1 || true
@@ -185,6 +218,17 @@ print(value.strip() if isinstance(value, str) and value.strip() else "en_US-ljsp
     echo "WARN: not in the input group; double-tap Ctrl cannot read the keyboard"
   fi
 
+  if [ -n "${WAYLAND_DISPLAY:-}" ] && ! command -v wl-paste >/dev/null 2>&1; then
+    echo "WARN: Wayland session without wl-clipboard; selections from Wayland apps"
+    echo "      may not be readable. Install it: sudo apt install -y wl-clipboard"
+  elif command -v wl-paste >/dev/null 2>&1; then
+    echo "PASS: wl-clipboard (native Wayland selections)"
+  elif command -v xclip >/dev/null 2>&1; then
+    echo "PASS: xclip (X11 selections)"
+  else
+    echo "WARN: no clipboard tool; install wl-clipboard or xclip"
+  fi
+
   if command -v systemctl >/dev/null 2>&1; then
     local hotkey_state
     hotkey_state="$(systemctl --user is-active voice-for-agent-hotkey.service 2>/dev/null || true)"
@@ -256,39 +300,140 @@ speak_clipboard_cmd() {
   printf '%s' "$text" | "$PY" "$SPEAK" --async
 }
 
+choose_selection() {
+  # Pick primary selection or clipboard. Writes the decision to the state dir.
+  # $1 mode (auto|primary|clipboard), $2 primary text, $3 clipboard text,
+  # $4 state dir, $5 default source when both look fresh (primary|clipboard).
+  # Prints the chosen text; the source is in $4/last-source.
+  local mode="$1" primary="$2" clipboard="$3" state="$4"
+  local default_source="${5:-primary}"
+  local last_primary="" last_clipboard="" last_source="" text="" source=""
+  local p_hash="" c_hash="" p_same=0 c_same=0
+
+  if [ -f "$state/last-primary" ]; then
+    last_primary="$(cat "$state/last-primary" 2>/dev/null || true)"
+  fi
+  if [ -f "$state/last-clipboard" ]; then
+    last_clipboard="$(cat "$state/last-clipboard" 2>/dev/null || true)"
+  fi
+  if [ -f "$state/last-source" ]; then
+    last_source="$(cat "$state/last-source" 2>/dev/null || true)"
+  fi
+
+  case "$mode" in
+    clipboard)
+      text="$clipboard"
+      source="clipboard"
+      ;;
+    primary)
+      text="$primary"
+      source="primary"
+      ;;
+    *)
+      if [ -z "${primary//[[:space:]]/}" ]; then
+        text="$clipboard"
+        source="clipboard"
+      elif [ -z "${clipboard//[[:space:]]/}" ]; then
+        text="$primary"
+        source="primary"
+      elif [ "$primary" = "$clipboard" ]; then
+        text="$primary"
+        source="primary"
+      else
+        p_hash="$(hash_text "$primary")"
+        c_hash="$(hash_text "$clipboard")"
+        [ -n "$last_primary" ] && [ "$p_hash" = "$last_primary" ] && p_same=1
+        [ -n "$last_clipboard" ] && [ "$c_hash" = "$last_clipboard" ] && c_same=1
+        if [ "$p_same" -eq 1 ] && [ "$c_same" -eq 0 ]; then
+          # Primary did not change but the clipboard did: the app copied the
+          # new selection, so the clipboard is the fresh text.
+          text="$clipboard"
+          source="clipboard"
+        elif [ "$p_same" -eq 0 ] && [ "$c_same" -eq 1 ]; then
+          text="$primary"
+          source="primary"
+        elif [ "$p_same" -eq 1 ] && [ "$c_same" -eq 1 ]; then
+          # Nothing changed. Repeat whatever was used last, so pressing again
+          # re-reads the same text instead of jumping to a stale buffer.
+          if [ "$last_source" = "clipboard" ]; then
+            text="$clipboard"
+            source="clipboard"
+          else
+            text="$primary"
+            source="primary"
+          fi
+        else
+          # Both changed, or there is no history yet. Use the caller's default.
+          if [ "$default_source" = "clipboard" ]; then
+            text="$clipboard"
+            source="clipboard"
+          else
+            text="$primary"
+            source="primary"
+          fi
+        fi
+      fi
+      ;;
+  esac
+
+  mkdir -p "$state" 2>/dev/null || true
+  hash_text "$primary" >"$state/last-primary" 2>/dev/null || true
+  hash_text "$clipboard" >"$state/last-clipboard" 2>/dev/null || true
+  printf '%s\n' "$source" >"$state/last-source" 2>/dev/null || true
+  printf '%s' "$text"
+}
+
 speak_selection_cmd() {
   require_venv || return 1
-  local text="" source=""
+  local primary="" clipboard="" psrc="none" csrc="none"
+  local text="" source="" mode="" state="$ROOT/.run" default_source="primary"
   log_event "speak-selection start"
+  mode="$(config_value selection_source auto)"
+  case "$mode" in
+    auto | primary | clipboard) ;;
+    *)
+      log_event "speak-selection: invalid selection_source '$mode', using auto"
+      mode="auto"
+      ;;
+  esac
+
   if command -v wl-paste >/dev/null 2>&1; then
-    source="wl-paste"
-    text="$(wl-paste --primary --no-newline 2>/dev/null)" || true
+    psrc="wl-paste primary"
+    primary="$(wl-paste --primary --no-newline 2>/dev/null)" || primary=""
+    csrc="wl-paste clipboard"
+    clipboard="$(wl-paste --no-newline 2>/dev/null)" || clipboard=""
   elif command -v xclip >/dev/null 2>&1; then
-    source="xclip"
-    text="$(read_x11 primary)" || text=""
+    psrc="xclip primary"
+    primary="$(read_x11 primary)" || primary=""
+    csrc="xclip clipboard"
+    clipboard="$(read_x11 clipboard)" || clipboard=""
   else
     log_event "speak-selection: no selection tool"
     echo "No selection tool found. Install wl-clipboard (Wayland) or xclip (X11)." >&2
     notify "No selection tool. Install wl-clipboard or xclip."
     return 1
   fi
-  if [ -z "${text//[[:space:]]/}" ]; then
-    log_event "speak-selection: empty primary via $source, trying clipboard"
-    if command -v wl-paste >/dev/null 2>&1; then
-      source="wl-paste clipboard"
-      text="$(wl-paste --no-newline 2>/dev/null)" || true
-    else
-      source="xclip clipboard"
-      text="$(read_x11 clipboard)" || text=""
-    fi
+
+  if ! command -v wl-paste >/dev/null 2>&1 && [ -n "${WAYLAND_DISPLAY:-}" ]; then
+    # X11 tools cannot see native Wayland selections, so the bridged clipboard
+    # is the only source that is likely to hold what the user just selected.
+    default_source="clipboard"
+    log_event "speak-selection: wl-clipboard missing; Wayland selections can be stale (install wl-clipboard)"
   fi
+
+  text="$(choose_selection "$mode" "$primary" "$clipboard" "$state" "$default_source")"
+  case "$(cat "$state/last-source" 2>/dev/null || true)" in
+    clipboard) source="$csrc" ;;
+    *) source="$psrc" ;;
+  esac
+
   if [ -z "${text//[[:space:]]/}" ]; then
     log_event "speak-selection: nothing selected or copied via $source"
     echo "No selected text." >&2
     notify "Nothing selected or copied. Highlight or copy text, then try again."
     return 0
   fi
-  log_event "speak-selection: ${#text} chars via $source"
+  log_event "speak-selection: ${#text} chars via $source (mode=$mode)"
   notify "Speaking ${#text} characters."
   printf '%s' "$text" | "$PY" "$SPEAK" --async
 }
@@ -531,6 +676,11 @@ interactive_menu() {
     esac
   done
 }
+
+if [ "${VFA_LIB:-0}" = "1" ]; then
+  # Sourced by tests: define functions only.
+  return 0 2>/dev/null || exit 0
+fi
 
 case "${1:-menu}" in
   menu) interactive_menu ;;

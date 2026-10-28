@@ -60,7 +60,9 @@ Optional, only for the double-tap Ctrl service:
 
 - `systemd` user services, available on any modern desktop Linux.
 - Membership in the `input` group, so the service can read `/dev/input`.
-- `xclip` (X11) or `wl-clipboard` (Wayland) to read the selected or copied text.
+- `wl-clipboard` on Wayland, or `xclip` on X11, to read the selected or copied
+  text. On Wayland, `wl-clipboard` is strongly recommended: X11 tools cannot see
+  selections made in native Wayland apps.
 
 `install.sh` never runs `sudo`. If a system package is missing, it prints the
 `apt` command for you to run yourself.
@@ -183,6 +185,23 @@ Speak text you selected or copied, without sending a chat message:
 bash menu.sh speak-selection     # highlight text, then run this
 bash menu.sh speak-clipboard     # copy text, then run this
 bash menu.sh toggle              # stop if speaking, else speak selection
+```
+
+`speak-selection` reads the primary selection and falls back to the clipboard.
+Some apps, especially terminal UIs, copy the selection to the clipboard instead
+of the primary selection; in that case the clipboard is used automatically.
+
+On Wayland, install `wl-clipboard` so selections from native Wayland apps are
+readable:
+
+```bash
+sudo apt install -y wl-clipboard
+```
+
+If the hotkey keeps speaking old text, force one source in `config.json`:
+
+```json
+{ "selection_source": "clipboard" }
 ```
 
 ## Double-tap Ctrl service
@@ -362,6 +381,7 @@ cp config.example.json config.json
   "voice": "en-IN-PrabhatNeural",
   "voice_hi": "hi-IN-MadhurNeural",
   "auto_voice": true,
+  "selection_source": "auto",
   "piper_voice": "en_US-ljspeech-high",
   "rate": "-5%",
   "pitch": "-8Hz",
@@ -375,6 +395,7 @@ cp config.example.json config.json
 | `voice` | string | edge-tts voice for Latin-script text. |
 | `voice_hi` | string | edge-tts voice for Devanagari text. |
 | `auto_voice` | boolean | Pick `voice_hi` automatically for Devanagari. |
+| `selection_source` | string | `auto`, `primary`, or `clipboard` for the hotkey. |
 | `piper_voice` | string | Installed piper model name, without `.onnx`. |
 | `rate` | string | `+10%`, `-5%`, or `0%`. |
 | `pitch` | string | `+10Hz`, `-8Hz`, or `0Hz`. |
@@ -624,6 +645,7 @@ sudo gpasswd -d "$USER" input
 | `tests/smoke_test.sh` | End-to-end tests. |
 | `tests/test_hotkey.py` | Double-tap Ctrl detector unit tests. |
 | `tests/test_voice.py` | Voice selection, rate, and pitch unit tests. |
+| `tests/test_selection.sh` | Primary selection vs clipboard decision tests. |
 | `.github/workflows/ci.yml` | CI: syntax checks and unit tests. |
 | `LICENSE` | MIT License for this project. |
 | `THIRD_PARTY_NOTICES.md` | Dependency and voice-model license notes. |
@@ -667,7 +689,8 @@ The smoke test checks:
 4. the MCP server starts and lists `speak` and `stop_speaking`;
 5. real playback works, or an audio-file fallback passes with no audio device;
 6. the double-tap Ctrl detector unit tests;
-7. voice selection, rate, and pitch unit tests.
+7. voice selection, rate, and pitch unit tests;
+8. primary selection vs clipboard decision tests.
 
 `install.sh` runs the same suite at the end.
 
@@ -702,6 +725,11 @@ out and back in.
 **Double-tap works, but nothing is spoken** — the selection may be empty. The
 daemon falls back to the clipboard. Check that `xclip` or `wl-clipboard` is
 installed, and look at `.run/speak.log` for `speak-selection` lines.
+
+**Double-tap speaks old text** — the app put the new selection in the clipboard
+while the X11 primary selection stayed stale. Install `wl-clipboard` on Wayland,
+or set `"selection_source": "clipboard"` in `config.json`. The log line
+`speak-selection: N chars via ... (mode=...)` shows which source was used.
 
 **Service dies after a crash** — `Restart=on-failure` with `RestartSec=5` brings
 it back automatically. Confirm with `systemctl --user status`.
