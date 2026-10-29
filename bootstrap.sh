@@ -7,6 +7,7 @@ REPO_URL=""
 TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/voice-for-agent"
 BRANCH="main"
 REGISTER_OPENCODE=0
+WITH_SERVICE=0
 
 usage() {
   cat <<'EOF'
@@ -18,6 +19,7 @@ Options:
                           (default: ${XDG_DATA_HOME:-$HOME/.local/share}/voice-for-agent)
   --branch NAME           Git branch (default: main)
   --register-opencode     Register the MCP server globally in OpenCode
+  --with-service          Also install and enable the double-tap Ctrl user unit
   -h, --help              Show this help
 
 If --repo is omitted, bootstrap.sh uses the current checkout when it contains
@@ -40,6 +42,7 @@ while [ "$#" -gt 0 ]; do
     --dir) TARGET="${2:-}"; shift 2 ;;
     --branch) BRANCH="${2:-}"; shift 2 ;;
     --register-opencode) REGISTER_OPENCODE=1; shift ;;
+    --with-service) WITH_SERVICE=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *)
       echo "Unknown option: $1" >&2
@@ -92,7 +95,12 @@ fi
 
 cd "$SOURCE_DIR" || exit 1
 echo "Installing from: $SOURCE_DIR"
-if ! bash install.sh; then
+if [ "$WITH_SERVICE" -eq 1 ]; then
+  if ! bash install.sh --with-service; then
+    echo "install.sh failed." >&2
+    exit 1
+  fi
+elif ! bash install.sh; then
   echo "install.sh failed." >&2
   exit 1
 fi

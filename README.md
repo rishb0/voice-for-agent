@@ -100,6 +100,14 @@ bash bootstrap.sh \
   --register-opencode
 ```
 
+Add `--with-service` to install the double-tap Ctrl service in the same run:
+
+```bash
+bash bootstrap.sh \
+  --repo https://github.com/rishb0/voice-for-agent.git \
+  --with-service
+```
+
 ### Install with the hotkey service in one step
 
 ```bash
@@ -664,7 +672,7 @@ unit in `~/.config/systemd/user/`.
 
 | Path | Approximate size | Purpose |
 |---|---:|---|
-| `.venv/` | 284 MB | Local Python environment and packages. |
+| `.venv/` | about 270 MB | Local Python environment and packages. |
 | `voices/` | 109 MB for the default voice | Downloaded piper model and config. |
 | `.run/` | small | Locks, generation counter, log. |
 | `.tmp/` | small | Temporary audio, deleted after playback. |

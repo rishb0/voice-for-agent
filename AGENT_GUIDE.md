@@ -81,6 +81,9 @@ bash bootstrap.sh \
   --register-opencode
 ```
 
+`--with-service` also installs and enables the double-tap Ctrl unit, so one
+command gives you the CLI, the MCP server, and the hotkey service.
+
 To install the double-tap Ctrl service at the same time:
 
 ```bash
@@ -138,7 +141,7 @@ install folder is `${XDG_DATA_HOME:-$HOME/.local/share}/voice-for-agent`.
 
 | Path | Size | Purpose |
 |---|---:|---|
-| `.venv/` | about 284 MB | Local Python environment and packages. |
+| `.venv/` | about 270 MB | Local Python environment and packages. |
 | `voices/` | about 109 MB for the default voice | Downloaded piper model and config. |
 | `.run/` | small | Locks, generation counter, async log. |
 | `.tmp/` | small | Temporary audio files, deleted after playback. |

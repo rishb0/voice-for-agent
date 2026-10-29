@@ -32,6 +32,7 @@ jobs:
 
       - name: Unit template renders
         run: |
+          python -c "import json; json.load(open('config.example.json'))"
           sed -e 's|@ROOT_URI@|/tmp/repo|g' -e 's|@ROOT@|/tmp/repo|g' \
             -e 's|@PYTHON@|/usr/bin/python3|g' \
             systemd/voice-for-agent-hotkey.service.in >/tmp/unit.service

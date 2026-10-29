@@ -71,7 +71,9 @@ for target in "${TARGETS[@]}"; do
   fi
 done
 HOTKEY_UNIT="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/voice-for-agent-hotkey.service"
-if [ -f "$HOTKEY_UNIT" ]; then
+UNIT_OWNED=0
+if [ -f "$HOTKEY_UNIT" ] && grep -Fq "$ROOT/hotkey.py" "$HOTKEY_UNIT" 2>/dev/null; then
+  UNIT_OWNED=1
   echo "  $HOTKEY_UNIT"
   FOUND=1
 fi
@@ -80,6 +82,9 @@ if [ "$FOUND" -eq 0 ]; then
 fi
 echo
 echo "Will keep: source files, README, LICENSE, examples, tests"
+if [ -f "$HOTKEY_UNIT" ] && [ "$UNIT_OWNED" -eq 0 ]; then
+  echo "Will keep: $HOTKEY_UNIT (belongs to another install)"
+fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   echo "Dry run: nothing was removed."
@@ -104,7 +109,7 @@ for target in "${TARGETS[@]}"; do
 done
 find "$ROOT" -maxdepth 2 -name '*.pyc' -delete 2>/dev/null || true
 
-if [ -f "$HOTKEY_UNIT" ]; then
+if [ "$UNIT_OWNED" -eq 1 ]; then
   systemctl --user disable --now voice-for-agent-hotkey.service >/dev/null 2>&1 || true
   rm -f "$HOTKEY_UNIT"
   systemctl --user daemon-reload >/dev/null 2>&1 || true
