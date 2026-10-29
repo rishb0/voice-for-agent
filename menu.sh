@@ -434,7 +434,6 @@ speak_selection_cmd() {
     return 0
   fi
   log_event "speak-selection: ${#text} chars via $source (mode=$mode)"
-  notify "Speaking ${#text} characters."
   printf '%s' "$text" | "$PY" "$SPEAK" --async
 }
 

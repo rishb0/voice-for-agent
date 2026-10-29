@@ -6,6 +6,9 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
+# Desktop notifications only for service start and stop. Speech itself is silent.
+ExecStartPre=-/usr/bin/notify-send -a voice-for-agent "voice-for-agent" "Hotkey service started"
+ExecStopPost=-/usr/bin/notify-send -a voice-for-agent "voice-for-agent" "Hotkey service stopped"
 ExecStart="@PYTHON@" -u "@ROOT@/hotkey.py"
 Restart=on-failure
 RestartSec=5

@@ -271,6 +271,14 @@ systemctl --user restart voice-for-agent-hotkey
 journalctl --user -u voice-for-agent-hotkey -f
 ```
 
+### Notifications
+
+The service shows one desktop notification when it starts and one when it stops.
+Speaking shows no notification at all.
+
+The only other notifications are errors, such as "nothing selected or copied",
+because otherwise the hotkey looks broken when there is nothing to read.
+
 ### Where the unit lives
 
 ```text

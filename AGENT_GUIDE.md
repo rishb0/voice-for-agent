@@ -222,6 +222,10 @@ bash menu.sh service remove
 
 `bash uninstall.sh` also removes it.
 
+Notifications: the unit shows one desktop notification when it starts and one
+when it stops. Speech itself is silent. Errors such as "nothing selected" still
+notify, so a silent hotkey is not mistaken for a broken one.
+
 The service needs the `input` group to read `/dev/input`. If the log says
 `no readable /dev/input devices`, tell the user to run:
 
